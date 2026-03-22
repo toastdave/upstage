@@ -1,0 +1,25 @@
+{
+	"name": "upstage",
+	"private": true,
+	"packageManager": "bun@1.3.10",
+	"workspaces": ["apps/*", "packages/*"],
+	"scripts": {
+		"dev": "bun run --cwd apps/web dev",
+		"build": "bun run --cwd apps/web build",
+		"check": "bun run --cwd apps/web check && bun run --cwd packages/db check",
+		"lint": "biome check .",
+		"format": "biome format --write .",
+		"test": "bun run --cwd apps/web test && bun run --cwd packages/db test",
+		"db:generate": "bun run --cwd packages/db generate",
+		"db:migrate": "bun run --cwd packages/db migrate",
+		"db:push": "bun run --cwd packages/db push",
+		"db:studio": "bun run --cwd packages/db studio",
+		"seed": "bun run --cwd packages/db seed",
+		"docker:up": "docker compose up -d postgres minio createbuckets mailpit",
+		"docker:down": "docker compose down",
+		"dev:docker": "docker compose up --build web"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^1.9.4"
+	}
+}
