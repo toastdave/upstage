@@ -20,9 +20,9 @@ Upstage is an AI image generation app for real estate staging, empty-room interi
 ## Workspace layout
 
 - `apps/web` - marketing site, auth, dashboard, and generation UI
+- `apps/web/Dockerfile` - Bun SSR image for local dev and production-style builds
 - `packages/db` - Drizzle schema, migrations, and seeding
 - `docs/prds` - product and implementation planning docs
-- `docker/web` - container image for dev and production SSR
 
 ## Quick start
 
@@ -34,7 +34,7 @@ Upstage is an AI image generation app for real estate staging, empty-room interi
 6. `mise run seed`
 7. `mise run dev`
 
-To run the app fully inside Docker instead, use `mise run dev:docker`.
+To run the full app stack inside Docker with hot reloading, use `mise run dev:docker` and edit files locally.
 
 ## Auth setup
 
@@ -51,6 +51,7 @@ To run the app fully inside Docker instead, use `mise run dev:docker`.
 ## Core commands
 
 - `mise run dev` - run the SvelteKit app locally with Bun
+- `mise run dev:docker` - run the full stack in Docker with hot reloading
 - `mise run lint` - run Biome linting
 - `mise run format` - format the repo with Biome
 - `mise run check` - run Svelte and TypeScript checks

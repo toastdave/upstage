@@ -17,7 +17,7 @@
 		"seed": "bun run --cwd packages/db seed",
 		"docker:up": "docker compose up -d postgres minio createbuckets mailpit",
 		"docker:down": "docker compose down",
-		"dev:docker": "docker compose up --build web"
+		"dev:docker": "docker compose up --build"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4"

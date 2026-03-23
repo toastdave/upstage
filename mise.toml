@@ -13,8 +13,8 @@ run = "bun run dev"
 description = "Start the SvelteKit app locally"
 
 [tasks."dev:docker"]
-run = "docker compose up --build web"
-description = "Start the fully containerized app"
+run = "docker compose up --build"
+description = "Start the full containerized dev stack"
 
 [tasks."docker:up"]
 run = "docker compose up -d postgres minio createbuckets mailpit"
