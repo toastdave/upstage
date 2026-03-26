@@ -8,7 +8,7 @@ import * as schema from '@upstage/db/schema'
 import { betterAuth } from 'better-auth'
 import { sveltekitCookies } from 'better-auth/svelte-kit'
 
-const localDevOrigins = ['http://127.0.0.1:7412', 'http://localhost:7412']
+const localDevOrigins = ['http://127.0.0.1:1201', 'http://localhost:1201']
 
 function parseOrigins(value: string | undefined) {
 	if (!value) {

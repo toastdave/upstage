@@ -25,16 +25,16 @@ run = "docker compose down"
 description = "Stop Docker services"
 
 [tasks."tailscale:up"]
-run = "sudo tailscale serve --bg --https=7412 http://127.0.0.1:7412"
-description = "Expose the web app over Tailscale on port 7412"
+run = "sudo tailscale serve --bg --https=1201 http://127.0.0.1:1201"
+description = "Expose the web app over Tailscale on port 1201"
 
 [tasks."tailscale:status"]
 run = "tailscale serve status"
 description = "Show Tailscale Serve status"
 
 [tasks."tailscale:down"]
-run = "sudo tailscale serve --https=7412 off"
-description = "Stop Tailscale Serve on port 7412"
+run = "sudo tailscale serve --https=1201 off"
+description = "Stop Tailscale Serve on port 1201"
 
 [tasks.check]
 depends = ["install"]

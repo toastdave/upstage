@@ -42,8 +42,8 @@ cp .env.example .env
 2. Update `.env` for your machine:
 
 ```dotenv
-BETTER_AUTH_URL=https://<device>.<tailnet>.ts.net:7412
-BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:7412,https://<device>.<tailnet>.ts.net:7412
+BETTER_AUTH_URL=https://<device>.<tailnet>.ts.net:1201
+BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:1201,https://<device>.<tailnet>.ts.net:1201
 ```
 
 3. Install the toolchain and dependencies:
@@ -75,9 +75,9 @@ mise run dev
 
 App URLs:
 
-- Web app: `http://localhost:7412`
-- Mailpit: `http://localhost:8026`
-- MinIO console: `http://localhost:9011`
+- Web app: `http://localhost:1201`
+- Mailpit: `http://localhost:1204`
+- MinIO console: `http://localhost:1206`
 
 Stop supporting services:
 
@@ -120,9 +120,9 @@ mise run seed
 
 Open:
 
-- Web app: `http://localhost:7412`
-- Mailpit: `http://localhost:8026`
-- MinIO console: `http://localhost:9011`
+- Web app: `http://localhost:1201`
+- Mailpit: `http://localhost:1204`
+- MinIO console: `http://localhost:1206`
 
 Stop:
 
@@ -165,16 +165,16 @@ mise run tailscale:down
 Open the app from another device on your tailnet:
 
 ```text
-https://<device>.<tailnet>.ts.net:7412
+https://<device>.<tailnet>.ts.net:1201
 ```
 
-Use the full `https://` URL. This setup serves HTTPS on port `7412`; `http://` requests to the tailnet hostname will fail.
+Use the full `https://` URL. This setup serves HTTPS on port `1201`; `http://` requests to the tailnet hostname will fail.
 
 ## Auth setup
 
 - Email/password auth uses `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL`.
-- GitHub OAuth callback: `http://localhost:7412/api/auth/callback/github`
-- Google OAuth callback: `http://localhost:7412/api/auth/callback/google`
+- GitHub OAuth callback: `http://localhost:1201/api/auth/callback/github`
+- Google OAuth callback: `http://localhost:1201/api/auth/callback/google`
 
 ## AI setup
 
@@ -186,9 +186,9 @@ Use the full `https://` URL. This setup serves HTTPS on port `7412`; `http://` r
 
 - `mise run dev` - run the SvelteKit app locally with Bun
 - `mise run dev:docker` - run the full stack in Docker with hot reloading
-- `mise run tailscale:up` - expose the app over Tailscale on port `7412`
+- `mise run tailscale:up` - expose the app over Tailscale on port `1201`
 - `mise run tailscale:status` - inspect Tailscale Serve status
-- `mise run tailscale:down` - stop Tailscale Serve on port `7412`
+- `mise run tailscale:down` - stop Tailscale Serve on port `1201`
 - `mise run lint` - run Biome linting
 - `mise run format` - format the repo with Biome
 - `mise run check` - run Svelte and TypeScript checks
@@ -201,7 +201,7 @@ Use the full `https://` URL. This setup serves HTTPS on port `7412`; `http://` r
 ## Notes
 
 - We are intentionally starting with a `SvelteKit` monolith plus a future background worker package if async generation volume requires it.
-- The dedicated local and tailnet app port is `7412` so it does not collide with sibling projects.
+- The dedicated local and tailnet app port is `1201` so it follows the project `12xx` port block and does not collide with sibling projects.
 - `svelte-adapter-bun` is used for Bun-native SSR output.
 - `Biome` replaces both Prettier and ESLint for the initial codebase.
 - Credits are the recommended monetization primitive; pricing docs in `docs/prds` assume prepaid usage.
