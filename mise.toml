@@ -13,8 +13,8 @@ run = "bun run dev"
 description = "Start the SvelteKit app locally"
 
 [tasks."dev:docker"]
-run = "docker compose up --build"
-description = "Start the full containerized dev stack"
+run = "docker compose up -d --build"
+description = "Start the fully containerized app detached"
 
 [tasks."docker:up"]
 run = "docker compose up -d postgres minio createbuckets mailpit"
@@ -23,6 +23,18 @@ description = "Start local infrastructure containers"
 [tasks."docker:down"]
 run = "docker compose down"
 description = "Stop Docker services"
+
+[tasks."tailscale:up"]
+run = "sudo tailscale serve --bg --https=7412 http://127.0.0.1:7412"
+description = "Expose the web app over Tailscale on port 7412"
+
+[tasks."tailscale:status"]
+run = "tailscale serve status"
+description = "Show Tailscale Serve status"
+
+[tasks."tailscale:down"]
+run = "sudo tailscale serve --https=7412 off"
+description = "Stop Tailscale Serve on port 7412"
 
 [tasks.check]
 depends = ["install"]
