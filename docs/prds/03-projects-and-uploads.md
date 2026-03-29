@@ -33,6 +33,20 @@ Let users create projects, upload room photos, and organize source assets in a w
 - Upload metadata is queryable alongside project records.
 - Invalid uploads fail with clear, user-facing messaging.
 
+## Initial implementation status
+
+- Added a protected workspace dashboard for project creation and project list browsing.
+- Added project detail pages with active and archived source-photo sections.
+- Added server-mediated upload, replace, retry, and archive flows backed by object storage.
+- Persisted file size, mime type, dimensions, moderation state, and archive timestamp on source assets.
+- Added authenticated media serving so source photos stay private to the signed-in project owner.
+
+## Remaining follow-up
+
+- Upgrade to direct signed browser uploads when we want to remove the app server from the transfer path.
+- Add background cleanup for orphaned objects if storage upload succeeds but DB persistence fails.
+- Add multi-file upload UX and stronger mobile capture affordances.
+
 ## Non-goals
 
 - Video uploads

@@ -21,10 +21,15 @@ function parseOrigins(value: string | undefined) {
 		.filter(Boolean)
 }
 
-const configuredBaseURL = env.BETTER_AUTH_URL || undefined
+const configuredBaseURL =
+	env.BETTER_AUTH_URL || process.env.BETTER_AUTH_URL || 'http://localhost:1201'
+const configuredSecret =
+	env.BETTER_AUTH_SECRET ||
+	process.env.BETTER_AUTH_SECRET ||
+	'development-only-better-auth-secret-0001'
 
 export const auth = betterAuth({
-	...(configuredBaseURL ? { baseURL: configuredBaseURL } : {}),
+	baseURL: configuredBaseURL,
 	database: drizzleAdapter(db, {
 		provider: 'pg',
 		schema,
@@ -33,7 +38,7 @@ export const auth = betterAuth({
 		enabled: true,
 	},
 	plugins: [sveltekitCookies(getRequestEvent)],
-	secret: env.BETTER_AUTH_SECRET,
+	secret: configuredSecret,
 	socialProviders: getSocialProviderConfig(),
 	trustedOrigins: async (request) => {
 		const origins = new Set<string>([...parseOrigins(env.BETTER_AUTH_TRUSTED_ORIGINS)])

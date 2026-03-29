@@ -10,6 +10,7 @@ describe('database schema', () => {
 	test('generation jobs and source assets are linked for orchestration', () => {
 		expect(generationJob.sourceAssetId.name).toBe('source_asset_id')
 		expect(sourceAsset.storageKey.name).toBe('storage_key')
+		expect(sourceAsset.archivedAt.name).toBe('archived_at')
 	})
 
 	test('credit ledger stores signed entries', () => {

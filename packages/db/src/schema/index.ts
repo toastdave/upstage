@@ -13,11 +13,13 @@ import {
 	varchar,
 } from 'drizzle-orm/pg-core'
 
-export const projectTypeEnum = pgEnum('project_type', [
+export const projectTypeValues = [
 	'virtual_staging',
 	'empty_room_design',
 	'existing_room_redesign',
-])
+] as const
+
+export const projectTypeEnum = pgEnum('project_type', projectTypeValues)
 
 export const projectStatusEnum = pgEnum('project_status', ['draft', 'active', 'archived'])
 
@@ -160,6 +162,7 @@ export const sourceAsset = pgTable(
 		width: integer('width'),
 		height: integer('height'),
 		moderationStatus: moderationStatusEnum('moderation_status').notNull().default('pending'),
+		archivedAt: timestamp('archived_at', { withTimezone: true }),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	},
 	(table) => [

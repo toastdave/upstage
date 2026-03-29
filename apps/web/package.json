@@ -15,9 +15,12 @@
 		"test": "bun test"
 	},
 	"dependencies": {
+		"@aws-sdk/client-s3": "^3.923.0",
+		"@aws-sdk/s3-request-presigner": "^3.923.0",
 		"@better-auth/drizzle-adapter": "^1.5.5",
 		"@upstage/db": "workspace:*",
-		"better-auth": "^1.5.5"
+		"better-auth": "^1.5.5",
+		"drizzle-orm": "^0.44.7"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",

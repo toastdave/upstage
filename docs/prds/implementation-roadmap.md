@@ -12,6 +12,11 @@
 - Add storage-backed image metadata, validation, and moderation status.
 - Build mobile-friendly upload and project detail states.
 
+Current status:
+
+- Initial Phase 2 groundwork is in place: project creation, workspace list views, project detail pages, source-photo uploads, replacement, and archival.
+- Remaining work is focused on direct signed uploads, mobile polish, and richer project detail workflows.
+
 ## Phase 3 - Generation Core
 
 - Launch provider adapter, generation job lifecycle, and project-level result persistence.
