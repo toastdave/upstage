@@ -19,7 +19,8 @@ Current status:
 
 ## Phase 3 - Generation Core
 
-- Launch provider adapter, generation job lifecycle, and project-level result persistence.
+- Launch a Vercel AI SDK provider adapter, generation job lifecycle, and project-level result persistence.
+- Support Ollama as the local development provider and Google Gemini via Vercel AI Gateway for preview and production.
 - Add workflow selector, presets, aspect ratio controls, and variant generation.
 - Add gallery and before-and-after review surfaces.
 
@@ -41,4 +42,5 @@ Current status:
 - Core actions have empty, loading, success, and error states.
 - Credits, auth, storage, and webhook secrets are separated by environment.
 - Generation failures are traceable from UI to provider request metadata.
+- Local and hosted environments share one Vercel AI SDK integration path with provider routing differences isolated to configuration.
 - Billing and moderation workflows are operationally reviewable before launch.

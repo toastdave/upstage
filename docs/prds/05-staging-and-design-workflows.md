@@ -21,7 +21,7 @@ Help users produce high-intent outputs for property marketing and design ideatio
 
 - Design workflow selector and prompt-builder UI.
 - Build style presets, room labels, and detail controls.
-- Add workflow-aware prompt templates and provider input shaping.
+- Add workflow-aware prompt templates and provider input shaping that stay compatible across local Ollama development runs and Google Gemini production runs.
 - Support generating multiple variants from a single source photo.
 - Add basic before-and-after comparison view.
 - Add guidance copy so users understand realistic inputs and expected outputs.
