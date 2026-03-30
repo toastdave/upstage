@@ -1,9 +1,11 @@
+import { aspectRatioOptions } from '$lib/generation'
 import { formatProjectType } from '$lib/projects'
 import { db } from '$lib/server/db'
+import { executeProjectGeneration, loadProjectGenerationState } from '$lib/server/generation-jobs'
 import { normalizeOptionalText } from '$lib/server/projects'
 import {
 	buildSourceAssetStorageKey,
-	buildSourceAssetUrl,
+	buildStoredMediaUrl,
 	uploadSourceAssetObject,
 } from '$lib/server/storage'
 import {
@@ -83,7 +85,7 @@ async function saveSourceAsset(options: {
 		ownerUserId: options.userId,
 		projectId: options.projectRecord.id,
 		storageKey,
-		url: buildSourceAssetUrl(storageKey),
+		url: buildStoredMediaUrl(storageKey),
 		originalFilename: normalizeOptionalText(options.file.name, 180),
 		mimeType: options.file.type,
 		fileSizeBytes: options.file.size,
@@ -98,16 +100,17 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 	}
 
 	const projectRecord = await getOwnedProject(params.slug, locals.user.id)
-
 	const assets = await db
 		.select()
 		.from(sourceAsset)
 		.where(eq(sourceAsset.projectId, projectRecord.id))
 		.orderBy(desc(sourceAsset.createdAt))
+	const generationState = await loadProjectGenerationState(projectRecord.id)
 
 	return {
 		activeAssets: assets.filter((item) => item.archivedAt === null),
 		archivedAssets: assets.filter((item) => item.archivedAt !== null),
+		generationState,
 		project: {
 			...projectRecord,
 			projectTypeLabel: formatProjectType(projectRecord.projectType),
@@ -226,6 +229,84 @@ export const actions: Actions = {
 			form: 'archiveAsset',
 			message:
 				'Source photo archived. You can always upload a fresh room photo for the next round.',
+		}
+	},
+
+	generateConcept: async ({ locals, params, request }) => {
+		if (!locals.user) {
+			throw redirect(303, `/auth/sign-in?redirectTo=/account/projects/${params.slug}`)
+		}
+
+		const formData = await request.formData()
+		const sourceAssetEntry = formData.get('sourceAssetId')
+		const presetEntry = formData.get('presetId')
+		const aspectRatioEntry = formData.get('aspectRatio')
+		const sourceAssetId = typeof sourceAssetEntry === 'string' ? sourceAssetEntry : ''
+		const presetId = typeof presetEntry === 'string' ? presetEntry : ''
+		const aspectRatio = typeof aspectRatioEntry === 'string' ? aspectRatioEntry : ''
+		const additionalInstructions = normalizeOptionalText(
+			formData.get('additionalInstructions'),
+			1200
+		)
+		const protectedElements = normalizeOptionalText(formData.get('protectedElements'), 600)
+
+		const values = {
+			additionalInstructions: additionalInstructions ?? '',
+			aspectRatio,
+			presetId,
+			protectedElements: protectedElements ?? '',
+			sourceAssetId,
+		}
+
+		if (!sourceAssetId) {
+			return fail(400, {
+				error: 'Choose a source photo before generating a concept.',
+				form: 'generateConcept',
+				values,
+			})
+		}
+
+		if (!presetId) {
+			return fail(400, {
+				error: 'Choose a preset so the generation plan starts from a tested direction.',
+				form: 'generateConcept',
+				values,
+			})
+		}
+
+		if (!aspectRatioOptions.some((option) => option.value === aspectRatio)) {
+			return fail(400, {
+				error: 'Choose a supported aspect ratio for this concept run.',
+				form: 'generateConcept',
+				values,
+			})
+		}
+
+		try {
+			await executeProjectGeneration({
+				additionalInstructions,
+				aspectRatio,
+				presetId,
+				projectSlug: params.slug,
+				protectedElements,
+				sourceAssetId,
+				userId: locals.user.id,
+			})
+
+			return {
+				form: 'generateConcept',
+				message:
+					'Generation finished. Review the newest output batch in the history section below.',
+			}
+		} catch (error) {
+			return fail(400, {
+				error:
+					error instanceof Error
+						? error.message
+						: 'Generation failed before completion. Check your local model or provider settings.',
+				form: 'generateConcept',
+				values,
+			})
 		}
 	},
 }

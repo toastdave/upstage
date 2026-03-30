@@ -187,6 +187,7 @@ export const generationJob = pgTable(
 	'generation_job',
 	{
 		id: uuid('id').defaultRandom().primaryKey(),
+		idempotencyKey: varchar('idempotency_key', { length: 120 }).notNull().unique(),
 		projectId: uuid('project_id')
 			.notNull()
 			.references(() => project.id, { onDelete: 'cascade' }),
@@ -204,6 +205,9 @@ export const generationJob = pgTable(
 		aspectRatio: varchar('aspect_ratio', { length: 16 }).notNull().default('4:3'),
 		requestedCount: integer('requested_count').notNull().default(1),
 		creditCost: integer('credit_cost').notNull().default(0),
+		providerGenerationId: text('provider_generation_id'),
+		requestMetadata: jsonb('request_metadata').notNull().default({}),
+		responseMetadata: jsonb('response_metadata').notNull().default({}),
 		errorMessage: text('error_message'),
 		startedAt: timestamp('started_at', { withTimezone: true }),
 		completedAt: timestamp('completed_at', { withTimezone: true }),
@@ -225,6 +229,7 @@ export const generationImage = pgTable(
 			.references(() => generationJob.id, { onDelete: 'cascade' }),
 		storageKey: text('storage_key').notNull().unique(),
 		url: text('url').notNull(),
+		mimeType: varchar('mime_type', { length: 80 }).notNull().default('image/png'),
 		revisedPrompt: text('revised_prompt'),
 		seed: integer('seed'),
 		width: integer('width'),

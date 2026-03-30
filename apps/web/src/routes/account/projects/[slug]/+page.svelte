@@ -1,10 +1,47 @@
 <script lang="ts">
+import { aspectRatioOptions, estimateGenerationCredits, formatAspectRatio } from '$lib/generation'
 import { formatBytes } from '$lib/projects'
 import type { ActionData, PageData } from './$types'
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>()
 
 const uploadDimensions = $state<Record<string, { height: string; width: string }>>({})
+let selectedAspectRatio = $state('4:3')
+let selectedPresetId = $state('')
+let selectedSourceAssetId = $state('')
+let protectedElements = $state('')
+let additionalInstructions = $state('')
+
+const matchingPresets = $derived(
+	data.generationState.presets.filter(
+		(preset: (typeof data.generationState.presets)[number]) =>
+			preset.category === data.project.projectType
+	)
+)
+const runtimeCapability = $derived(
+	data.generationState.capabilities.find(
+		(capability: (typeof data.generationState.capabilities)[number]) =>
+			capability.route === data.generationState.generationRoute
+	)
+)
+const estimatedCredits = $derived(estimateGenerationCredits(selectedAspectRatio))
+
+$effect(() => {
+	if (form?.form === 'generateConcept' && form.values) {
+		selectedAspectRatio = form.values.aspectRatio || selectedAspectRatio
+		selectedPresetId = form.values.presetId || selectedPresetId
+		selectedSourceAssetId = form.values.sourceAssetId || selectedSourceAssetId
+		protectedElements = form.values.protectedElements || ''
+		additionalInstructions = form.values.additionalInstructions || ''
+		return
+	}
+
+	selectedAspectRatio = matchingPresets[0]?.defaultAspectRatio ?? '4:3'
+	selectedPresetId = matchingPresets[0]?.id ?? ''
+	selectedSourceAssetId = data.activeAssets[0]?.id ?? ''
+	protectedElements = 'Windows, doors, wall trim, layout, and permanent architectural features'
+	additionalInstructions = ''
+})
 
 async function handleFileChange(event: Event, key: string) {
 	const input = event.currentTarget as HTMLInputElement
@@ -51,7 +88,12 @@ async function handleFileChange(event: Event, key: string) {
 		<a class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 font-semibold text-ink-900" href="/account">
 			Back to workspace
 		</a>
-		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 uppercase tracking-[0.24em] text-xs">{data.project.projectTypeLabel}</span>
+		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 uppercase tracking-[0.24em] text-xs">
+			{data.project.projectTypeLabel}
+		</span>
+		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 uppercase tracking-[0.24em] text-xs">
+			{runtimeCapability?.label ?? data.generationState.generationRoute}
+		</span>
 	</div>
 
 	<div class="mt-6 grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
@@ -60,7 +102,7 @@ async function handleFileChange(event: Event, key: string) {
 				<p class="font-display text-sm uppercase tracking-[0.3em] text-moss-500">Project detail</p>
 				<h1 class="mt-4 font-display text-4xl leading-none text-ink-950 sm:text-5xl">{data.project.title}</h1>
 				<p class="mt-4 max-w-2xl text-base leading-8 text-ink-700">
-					Upload the clearest room photo you have. Source photos stay grouped here so future generation batches can reference them cleanly.
+					Upload the clearest room photo you have, then turn it into a structured generation brief with presets, constraints, and provider-aware execution.
 				</p>
 
 				<div class="mt-8 flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-ink-700/80">
@@ -76,7 +118,9 @@ async function handleFileChange(event: Event, key: string) {
 					{#if data.project.locationLabel}
 						<span class="rounded-full bg-paper-100 px-3 py-1">{data.project.locationLabel}</span>
 					{/if}
-					<span class="rounded-full bg-paper-100 px-3 py-1">Created {new Date(data.project.createdAt).toLocaleDateString()}</span>
+					<span class="rounded-full bg-paper-100 px-3 py-1">
+						Created {new Date(data.project.createdAt).toLocaleDateString()}
+					</span>
 				</div>
 			</div>
 
@@ -100,17 +144,103 @@ async function handleFileChange(event: Event, key: string) {
 					</button>
 				</form>
 
-				{#if form?.message}
+				{#if form?.form === 'uploadAsset' && form.message}
 					<p class="mt-5 rounded-2xl border border-moss-500/20 bg-moss-500/10 px-4 py-3 text-sm text-moss-500">
 						{form.message}
 					</p>
 				{/if}
 
-				{#if form?.error}
+				{#if form?.form === 'uploadAsset' && form.error}
 					<div class="mt-5 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-4 text-sm text-terracotta-500">
 						<p>{form.error}</p>
 						<a class="mt-3 inline-flex rounded-full border border-terracotta-500/20 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-terracotta-500" href="#upload-form">
 							Retry upload
+						</a>
+					</div>
+				{/if}
+			</div>
+
+			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur" id="generation-form">
+				<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Generation setup</p>
+				<h2 class="mt-3 font-display text-3xl text-ink-950">Turn the room into an editable generation plan</h2>
+				<p class="mt-3 text-sm leading-7 text-ink-700">
+					The prompt compiler turns this form into a structured room brief JSON plus provider-specific prompt instructions. Local runs use Ollama, while production routes through Gemini.
+				</p>
+
+				<form class="mt-6 space-y-5" method="POST" action="?/generateConcept">
+					<div class="grid gap-4 sm:grid-cols-2">
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-ink-900" for="sourceAssetId">Source photo</label>
+							<select bind:value={selectedSourceAssetId} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="sourceAssetId" name="sourceAssetId" required>
+								<option disabled value="">Choose a source photo</option>
+								{#each data.activeAssets as asset}
+									<option value={asset.id}>{asset.originalFilename ?? 'Uploaded room photo'}{#if asset.width && asset.height} - {asset.width} x {asset.height}{/if}</option>
+								{/each}
+							</select>
+						</div>
+
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-ink-900" for="presetId">Preset</label>
+							<select bind:value={selectedPresetId} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="presetId" name="presetId" required>
+								<option disabled value="">Choose a preset</option>
+								{#each matchingPresets as preset}
+									<option value={preset.id}>{preset.name}</option>
+								{/each}
+							</select>
+						</div>
+					</div>
+
+					<div class="grid gap-4 sm:grid-cols-2">
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-ink-900" for="aspectRatio">Aspect ratio</label>
+							<select bind:value={selectedAspectRatio} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="aspectRatio" name="aspectRatio" required>
+								{#each aspectRatioOptions as option}
+									<option value={option.value}>{option.label} ({option.value})</option>
+								{/each}
+							</select>
+						</div>
+
+						<div class="rounded-2xl border border-ink-950/10 bg-paper-100/75 px-4 py-4">
+							<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Estimated live cost</p>
+							<p class="mt-2 font-display text-3xl text-ink-950">{estimatedCredits} credits</p>
+							<p class="mt-2 text-sm leading-7 text-ink-700">Credits remain a planning estimate until billing hooks are live.</p>
+						</div>
+					</div>
+
+					<div class="space-y-2">
+						<label class="text-sm font-medium text-ink-900" for="protectedElements">Protected elements</label>
+						<input bind:value={protectedElements} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="protectedElements" maxlength="600" name="protectedElements" placeholder="Windows, fireplace, trim, built-ins, balcony doors..." type="text" />
+					</div>
+
+					<div class="space-y-2">
+						<label class="text-sm font-medium text-ink-900" for="additionalInstructions">Transformation notes</label>
+						<textarea bind:value={additionalInstructions} class="min-h-32 w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="additionalInstructions" maxlength="1200" name="additionalInstructions" placeholder="Example: Add an upscale but believable furniture package, keep the room airy, and avoid adding a rug under the dining table."></textarea>
+					</div>
+
+					<div class="rounded-2xl border border-ink-950/10 bg-paper-100/75 px-4 py-4 text-sm leading-7 text-ink-700">
+						<p class="font-semibold text-ink-950">Execution route</p>
+						<p class="mt-2">{runtimeCapability?.description}</p>
+						{#if runtimeCapability?.notes}
+							<p class="mt-2 text-terracotta-500">{runtimeCapability.notes}</p>
+						{/if}
+					</div>
+
+					<button class="rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100 disabled:opacity-60" disabled={data.activeAssets.length === 0 || matchingPresets.length === 0} type="submit">
+						Generate concept
+					</button>
+				</form>
+
+				{#if form?.form === 'generateConcept' && form.message}
+					<p class="mt-5 rounded-2xl border border-moss-500/20 bg-moss-500/10 px-4 py-3 text-sm text-moss-500">
+						{form.message}
+					</p>
+				{/if}
+
+				{#if form?.form === 'generateConcept' && form.error}
+					<div class="mt-5 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-4 text-sm text-terracotta-500">
+						<p>{form.error}</p>
+						<a class="mt-3 inline-flex rounded-full border border-terracotta-500/20 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-terracotta-500" href="#generation-form">
+							Retry generation
 						</a>
 					</div>
 				{/if}
@@ -174,25 +304,97 @@ async function handleFileChange(event: Event, key: string) {
 					</div>
 				{/if}
 			</div>
+
+			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur">
+				<div class="flex items-center justify-between gap-4">
+					<div>
+						<p class="text-sm uppercase tracking-[0.28em] text-terracotta-500">Generation history</p>
+						<h2 class="mt-3 font-display text-3xl text-ink-950">Job timeline</h2>
+					</div>
+					<span class="rounded-full border border-ink-950/10 bg-paper-100 px-4 py-2 text-xs uppercase tracking-[0.24em] text-ink-700">
+						{data.generationState.jobs.length} jobs
+					</span>
+				</div>
+
+				{#if data.generationState.jobs.length === 0}
+					<div class="mt-6 rounded-[1.75rem] border border-dashed border-ink-950/15 bg-paper-100/75 p-6 text-sm leading-7 text-ink-700">
+						No generation jobs yet. The first run will save its structured room brief, provider metadata, and output images here.
+					</div>
+				{:else}
+					<div class="mt-6 space-y-5">
+						{#each data.generationState.jobs as job}
+							<div class="rounded-[1.75rem] border border-ink-950/10 bg-paper-100/70 p-5">
+								<div class="flex flex-wrap items-start justify-between gap-4">
+									<div>
+										<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">{job.provider}</p>
+										<h3 class="mt-2 font-display text-2xl text-ink-950">{job.styleLabel ?? 'Generated concept'}</h3>
+										<p class="mt-2 text-sm text-ink-700">{formatAspectRatio(job.aspectRatio)} - {job.model}</p>
+									</div>
+									<span class="rounded-full border border-ink-950/10 bg-white px-3 py-1 text-xs uppercase tracking-[0.24em] text-ink-700">
+										{job.status}
+									</span>
+								</div>
+
+								<div class="mt-4 flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-ink-700/80">
+									<span class="rounded-full bg-white px-3 py-1">Created {new Date(job.createdAt).toLocaleString()}</span>
+									<span class="rounded-full bg-white px-3 py-1">Est. {job.creditCost} credits</span>
+									{#if job.completedAt}
+										<span class="rounded-full bg-white px-3 py-1">Completed {new Date(job.completedAt).toLocaleString()}</span>
+									{/if}
+								</div>
+
+								{#if job.errorMessage}
+									<p class="mt-4 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
+										{job.errorMessage}
+									</p>
+								{/if}
+
+								{#if job.images.length > 0}
+									<div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+										{#each job.images as image}
+											<div class="overflow-hidden rounded-2xl border border-ink-950/10 bg-white">
+												<div class="aspect-[4/3] bg-ink-950/5">
+													<img alt={job.styleLabel ?? 'Generated concept'} class="h-full w-full object-cover" src={image.url} />
+												</div>
+												<div class="p-4 text-sm text-ink-700">
+													<p class="font-semibold text-ink-950">Output {image.sortOrder + 1}</p>
+													<p class="mt-1">{image.mimeType}{#if image.width && image.height} - {image.width} x {image.height}{/if}</p>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
 		</div>
 
 		<div class="space-y-6">
 			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur">
-				<p class="text-sm uppercase tracking-[0.28em] text-terracotta-500">What is ready here</p>
+				<p class="text-sm uppercase tracking-[0.28em] text-terracotta-500">Current AI route</p>
+				<h2 class="mt-3 font-display text-3xl text-ink-950">{runtimeCapability?.label ?? 'Generation route'}</h2>
+				<p class="mt-3 text-sm leading-7 text-ink-700">{runtimeCapability?.description}</p>
 				<ul class="mt-5 space-y-3 text-sm leading-7 text-ink-700">
-					<li>Create and keep a distinct source-photo library per listing or room.</li>
-					<li>Validate uploads before they are stored and track size, format, and image dimensions.</li>
-					<li>Replace weaker room photos without losing the previous version completely.</li>
-					<li>Archive outdated source photos when a project evolves.</li>
+					<li>Structured room brief: {runtimeCapability?.supportsStructuredRoomBrief ? 'yes' : 'no'}</li>
+					<li>Source-image editing: {runtimeCapability?.supportsSourceImageEditing ? 'yes' : 'no'}</li>
+					<li>Explicit aspect ratio: {runtimeCapability?.supportsExplicitAspectRatio ? 'yes' : 'prompt hint only'}</li>
 				</ul>
+				{#if runtimeCapability?.notes}
+					<p class="mt-4 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
+						{runtimeCapability.notes}
+					</p>
+				{/if}
 			</div>
 
 			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur">
-				<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Next phase</p>
-				<h2 class="mt-3 font-display text-3xl text-ink-950">Generation setup slots in after the upload workflow</h2>
-				<p class="mt-3 text-sm leading-7 text-ink-700">
-					This page is ready to feed workflow-specific prompts, style presets, and queued generation jobs once Phase 3 lands.
-				</p>
+				<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Phase 3 direction</p>
+				<ul class="mt-5 space-y-3 text-sm leading-7 text-ink-700">
+					<li>Local development uses a provider-aware route with Ollama and Flux-style prompting.</li>
+					<li>Production runs through Gemini using the same internal generation plan structure.</li>
+					<li>Every generation stores enough metadata to support future reruns, critique loops, and provider swaps.</li>
+				</ul>
 			</div>
 
 			{#if data.archivedAssets.length > 0}

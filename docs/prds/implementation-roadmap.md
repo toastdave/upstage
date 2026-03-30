@@ -24,6 +24,11 @@ Current status:
 - Add workflow selector, presets, aspect ratio controls, and variant generation.
 - Add gallery and before-and-after review surfaces.
 
+Current status:
+
+- Initial generation setup, room brief compilation, provider routing, and job history are in place.
+- Remaining work is focused on AI-assisted room analysis, richer output handling, provider reliability, and comparison UX.
+
 ## Phase 4 - Monetization And Safety
 
 - Launch credits, plan entitlements, Polar checkout, and billing webhooks.

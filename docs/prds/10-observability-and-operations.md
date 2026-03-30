@@ -22,15 +22,16 @@ Ensure the MVP can be operated, debugged, and improved after launch without gues
 - Define a shared event taxonomy for sign-up, upload, generate, download, and upgrade events.
 - Add request logging and error boundaries.
 - Persist billing and moderation audit events.
-- Add operational notes for migrations, seeds, storage setup, webhook replay, and switching generation providers between Ollama and Google Gemini.
+- Add operational notes for migrations, seeds, storage setup, webhook replay, local Ollama model pulls, and switching generation providers between Ollama and Gemini.
 - Add health checks for SSR app, Postgres, and object storage.
+- Add runtime diagnostics that explain whether a local generation request was unavailable due to host or model limitations.
 
 ## Acceptance criteria
 
 - Critical actions emit inspectable logs or analytics events.
 - Billing and moderation changes are traceable.
 - Launch docs include recovery notes for generation failures and webhook issues.
-- Generation logs clearly identify whether a request ran through local Ollama or Google Gemini via Vercel AI Gateway.
+- Generation logs clearly identify whether a request ran through local Ollama or Gemini via Vercel AI Gateway, plus any capability downgrade or unsupported-local-host message.
 
 ## Non-goals
 

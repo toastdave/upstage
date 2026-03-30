@@ -15,7 +15,7 @@
 		"db:push": "bun run --cwd packages/db push",
 		"db:studio": "bun run --cwd packages/db studio",
 		"seed": "bun run --cwd packages/db seed",
-		"docker:up": "docker compose up -d postgres minio createbuckets mailpit",
+		"docker:up": "docker compose up -d postgres minio createbuckets mailpit ollama",
 		"docker:down": "docker compose down",
 		"dev:docker": "docker compose up -d --build"
 	},

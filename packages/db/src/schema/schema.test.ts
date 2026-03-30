@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { creditLedger, generationJob, project, sourceAsset } from './index'
+import { creditLedger, generationImage, generationJob, project, sourceAsset } from './index'
 
 describe('database schema', () => {
 	test('project table exposes expected columns', () => {
@@ -9,8 +9,10 @@ describe('database schema', () => {
 
 	test('generation jobs and source assets are linked for orchestration', () => {
 		expect(generationJob.sourceAssetId.name).toBe('source_asset_id')
+		expect(generationJob.idempotencyKey.name).toBe('idempotency_key')
 		expect(sourceAsset.storageKey.name).toBe('storage_key')
 		expect(sourceAsset.archivedAt.name).toBe('archived_at')
+		expect(generationImage.mimeType.name).toBe('mime_type')
 	})
 
 	test('credit ledger stores signed entries', () => {

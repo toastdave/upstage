@@ -10,6 +10,7 @@ Help users produce high-intent outputs for property marketing and design ideatio
 - Style and room-type controls
 - Aspect ratio choices aligned to listing and social outputs
 - Before-and-after review surfaces
+- Structured room brief JSON that captures protected elements and requested changes
 
 ## User stories
 
@@ -21,16 +22,28 @@ Help users produce high-intent outputs for property marketing and design ideatio
 
 - Design workflow selector and prompt-builder UI.
 - Build style presets, room labels, and detail controls.
-- Add workflow-aware prompt templates and provider input shaping that stay compatible across local Ollama development runs and Google Gemini production runs.
+- Add workflow-aware prompt templates and provider input shaping that compile from a structured room brief and stay compatible across local Ollama development runs and Gemini production runs.
 - Support generating multiple variants from a single source photo.
 - Add basic before-and-after comparison view.
 - Add guidance copy so users understand realistic inputs and expected outputs.
+- Define how protected elements and requested changes map into provider-specific prompt instructions.
 
 ## Acceptance criteria
 
 - Users can choose a workflow and style direction before generating.
 - Generated results are grouped by project and job.
 - The app clearly distinguishes staged, designed, and redesigned outputs.
+
+## Initial implementation status
+
+- Project detail pages now expose the first generation setup surface with source-photo selection, preset choice, aspect ratio, protected elements, and transformation notes.
+- Generation requests compile into a room brief JSON plus a provider-specific prompt.
+
+## Remaining follow-up
+
+- Add AI-assisted image-to-JSON room analysis rather than relying only on user-entered constraints.
+- Add before-and-after comparison UI and multi-variant selection.
+- Add richer preset guidance and provider-aware prompt tuning.
 
 ## Non-goals
 

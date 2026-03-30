@@ -7,9 +7,10 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 ## MVP scope
 
 - Job creation and lifecycle states
-- Provider adapter built on the Vercel AI SDK with Ollama for local development and Google Gemini via Vercel AI Gateway for preview and production
+- Capability-based provider adapter with local Ollama routing and Gemini via Vercel AI Gateway for hosted environments
 - Credit reservation and deduction hooks
 - Failure, retry, and result persistence behavior
+- Structured room brief JSON that can be compiled into provider-specific generation requests
 
 ## Requirements
 
@@ -17,16 +18,19 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 - Output images and provider metadata are persisted for later review.
 - The app can safely recover from provider or network failures.
 - Billing and support teams can inspect what happened after a failed run.
-- The same Vercel AI SDK abstraction can target local Ollama models in development and Google Gemini routes in hosted environments.
+- The same orchestration layer can target local Ollama models in development and Gemini routes in hosted environments.
+- Provider capability differences are explicit, especially around source-image editing, aspect-ratio control, and local hardware support.
 
 ## Task breakdown
 
 - Define job, result, and provider metadata schema ownership.
-- Add a provider abstraction layer around the Vercel AI SDK, including environment-based routing between Ollama and Vercel AI Gateway.
+- Add a capability-based provider abstraction layer with separate generation and analysis responsibilities.
+- Route local generation to Ollama with a Flux-style image model and hosted generation to Gemini through Vercel AI Gateway.
 - Implement create, queue, process, retry, and cancel behaviors.
 - Persist revised prompts, aspect ratio, seed, and timing metadata when available.
 - Add idempotency keys for generation submission and retry paths.
-- Define the default production route for Google Gemini image generation and the local Ollama model contract used for development and smoke tests.
+- Define the local Ollama contract, including the cases where image generation may be disabled or degraded on unsupported hosts.
+- Define the default hosted route for Gemini image generation and the conditions for future Flux or other open-source hosted swaps.
 - Surface job status in the project detail UI.
 
 ## Acceptance criteria
@@ -34,7 +38,19 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 - A submitted generation moves through queued, processing, and terminal states.
 - Failed jobs capture inspectable error details.
 - Successful jobs persist at least one generated image and related metadata.
-- Development environments can run end-to-end generation tests against Ollama, while preview and production environments resolve through Google Gemini without code-path drift.
+- Development environments can run end-to-end generation tests against Ollama when local image generation is available, while hosted environments resolve through Gemini without code-path drift in the orchestration layer.
+
+## Initial implementation status
+
+- Project detail pages now compile a structured room brief JSON and persist durable generation job records.
+- Local routes target Ollama, while hosted routes are prepared for Gemini through Vercel AI Gateway.
+- Job history now stores provider route, request metadata, response metadata, and generated image records.
+
+## Remaining follow-up
+
+- Add AI-powered room analysis to enrich the room brief JSON before generation.
+- Move generation execution to a background worker when latency or retry volume grows.
+- Add provider-aware critique and rerank passes for future quality control.
 
 ## Non-goals
 

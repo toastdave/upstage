@@ -17,7 +17,7 @@ run = "docker compose up -d --build"
 description = "Start the fully containerized app detached"
 
 [tasks."docker:up"]
-run = "docker compose up -d postgres minio createbuckets mailpit"
+run = "docker compose up -d postgres minio createbuckets mailpit ollama"
 description = "Start local infrastructure containers"
 
 [tasks."docker:down"]
@@ -35,6 +35,18 @@ description = "Show Tailscale Serve status"
 [tasks."tailscale:down"]
 run = "sudo tailscale serve --https=1201 off"
 description = "Stop Tailscale Serve on port 1201"
+
+[tasks."ai:pull:analysis"]
+run = "docker compose exec ollama ollama pull gemma3"
+description = "Pull the local analysis model"
+
+[tasks."ai:pull:image"]
+run = "docker compose exec ollama ollama pull x/flux2-klein:4b"
+description = "Pull the local image generation model"
+
+[tasks."ai:logs"]
+run = "docker compose logs -f ollama"
+description = "Follow local Ollama logs"
 
 [tasks.check]
 depends = ["install"]

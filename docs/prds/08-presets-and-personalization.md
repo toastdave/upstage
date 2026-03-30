@@ -16,12 +16,14 @@ Make Upstage feel opinionated and high-conviction by helping users start from te
 - Presets speed up first generation time.
 - Advanced users can still customize prompts without losing the guided structure.
 - Preset quality can improve over time without rewriting the whole UI.
+- Presets remain provider-agnostic product primitives even when the compiled prompts differ across Ollama and Gemini.
 
 ## Task breakdown
 
 - Seed starter presets by workflow and style family.
 - Build preset browser and preset application actions.
 - Support editable prompt overlays on top of structured templates.
+- Compile presets into provider-aware prompt variants so local Ollama and hosted Gemini can share the same product-level preset catalog.
 - Add user-level favorite and recent preset tracking.
 - Add internal evaluation notes for future preset tuning.
 

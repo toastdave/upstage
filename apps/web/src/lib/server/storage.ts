@@ -37,6 +37,17 @@ function sanitizeStorageSegment(value: string) {
 		.slice(0, 48)
 }
 
+function extensionFromMimeType(mimeType: string) {
+	switch (mimeType) {
+		case 'image/jpeg':
+			return 'jpg'
+		case 'image/webp':
+			return 'webp'
+		default:
+			return 'png'
+	}
+}
+
 export function buildSourceAssetStorageKey(projectSlug: string, originalFilename: string) {
 	const extension = originalFilename.includes('.')
 		? (originalFilename.split('.').pop()?.toLowerCase() ?? 'jpg')
@@ -46,11 +57,20 @@ export function buildSourceAssetStorageKey(projectSlug: string, originalFilename
 	return `source-assets/${projectSlug}/${crypto.randomUUID()}-${filename}.${extension}`
 }
 
-export function buildSourceAssetUrl(storageKey: string) {
+export function buildGenerationAssetStorageKey(
+	projectSlug: string,
+	jobId: string,
+	sortOrder: number,
+	mimeType = 'image/png'
+) {
+	return `generation-images/${projectSlug}/${jobId}-${sortOrder}.${extensionFromMimeType(mimeType)}`
+}
+
+export function buildStoredMediaUrl(storageKey: string) {
 	return `/media/${storageKey}`
 }
 
-export async function uploadSourceAssetObject(options: {
+export async function uploadStoredObject(options: {
 	body: Uint8Array
 	contentType: string
 	storageKey: string
@@ -65,6 +85,24 @@ export async function uploadSourceAssetObject(options: {
 			CacheControl: options.cacheControl,
 		})
 	)
+}
+
+export async function uploadSourceAssetObject(options: {
+	body: Uint8Array
+	contentType: string
+	storageKey: string
+	cacheControl?: string
+}) {
+	return uploadStoredObject(options)
+}
+
+export async function uploadGeneratedImageObject(options: {
+	body: Uint8Array
+	contentType: string
+	storageKey: string
+	cacheControl?: string
+}) {
+	return uploadStoredObject(options)
 }
 
 export async function getStoredObject(storageKey: string) {

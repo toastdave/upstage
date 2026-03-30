@@ -18,6 +18,7 @@ Upstage is an AI image generation app for real estate staging, empty-room interi
 - `Better Auth`
 - `Polar`
 - `AI SDK` + `Vercel AI Gateway`
+- `Ollama` for local AI routing
 - `Bun workspaces`
 - `Biome`
 - `Docker Compose`
@@ -58,6 +59,13 @@ mise run install
 - `mise run dev` for the web app on your host machine with Docker-managed support services
 - `mise run dev:docker` for the entire stack in Docker with hot reload
 
+Optional local AI model setup:
+
+```bash
+mise run ai:pull:analysis
+mise run ai:pull:image
+```
+
 ## Local development
 
 Run the supporting services in Docker and the web app on your host machine.
@@ -78,6 +86,7 @@ App URLs:
 - Web app: `http://localhost:1201`
 - Mailpit: `http://localhost:1204`
 - MinIO console: `http://localhost:1206`
+- Ollama API: `http://localhost:1207`
 
 Stop supporting services:
 
@@ -123,6 +132,7 @@ Open:
 - Web app: `http://localhost:1201`
 - Mailpit: `http://localhost:1204`
 - MinIO console: `http://localhost:1206`
+- Ollama API: `http://localhost:1207`
 
 Stop:
 
@@ -178,14 +188,21 @@ Use the full `https://` URL. This setup serves HTTPS on port `1201`; `http://` r
 
 ## AI setup
 
-- Default image generation routing uses `AI_GATEWAY_API_KEY`.
-- Primary model is `google/gemini-3-pro-image`.
-- Secondary routing is configured through `AI_FALLBACK_MODEL` for lower-cost retries later.
+- Local development defaults to `AI_EXECUTION_MODE=local`, which routes generation through Ollama.
+- Hosted environments should set `AI_EXECUTION_MODE=production`, which routes generation through Gemini via AI Gateway.
+- `AI_LOCAL_ANALYSIS_MODEL` defaults to `gemma3`.
+- `AI_LOCAL_IMAGE_MODEL` defaults to `x/flux2-klein:4b`.
+- `AI_PRIMARY_MODEL` defaults to `google/gemini-3-pro-image-preview`.
+- `AI_FALLBACK_MODEL` can define a lower-cost hosted fallback such as `google/gemini-2.5-flash-image`.
+- Some Ollama image models have host-platform limits. If local image generation is unavailable, the app records a clear job failure and you can temporarily switch to hosted routing.
 
 ## Core commands
 
 - `mise run dev` - run the SvelteKit app locally with Bun
 - `mise run dev:docker` - run the full stack in Docker with hot reloading
+- `mise run ai:pull:analysis` - pull the local Ollama analysis model
+- `mise run ai:pull:image` - pull the local Ollama image model
+- `mise run ai:logs` - follow Ollama logs
 - `mise run tailscale:up` - expose the app over Tailscale on port `1201`
 - `mise run tailscale:status` - inspect Tailscale Serve status
 - `mise run tailscale:down` - stop Tailscale Serve on port `1201`
@@ -205,3 +222,4 @@ Use the full `https://` URL. This setup serves HTTPS on port `1201`; `http://` r
 - `svelte-adapter-bun` is used for Bun-native SSR output.
 - `Biome` replaces both Prettier and ESLint for the initial codebase.
 - Credits are the recommended monetization primitive; pricing docs in `docs/prds` assume prepaid usage.
+- Local generation is designed for workflow development first; hosted Gemini remains the higher-confidence production route.
