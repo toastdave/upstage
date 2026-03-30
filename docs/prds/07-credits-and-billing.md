@@ -9,6 +9,7 @@ Monetize Upstage with prepaid credits and subscription tiers while protecting ma
 - Free and paid plan definitions
 - Credit ledger and credit balance visibility
 - Polar checkout entrypoints and webhook ingestion
+- Polar sandbox validation before live billing is enabled
 - Server-side enforcement of credit usage before generation
 
 ## Requirements
@@ -16,12 +17,14 @@ Monetize Upstage with prepaid credits and subscription tiers while protecting ma
 - Credits are the source of truth for paid generation actions.
 - Users understand what a generation will cost before they run it.
 - Billing state is durable and webhook replays are idempotent.
+- Local development, Polar sandbox, and live production billing are treated as distinct environments.
 
 ## Task breakdown
 
 - Define free and paid plan entitlements in the plan model.
 - Build pricing page, account billing page, and upgrade CTA placement.
 - Add Polar checkout, portal, and webhook handling.
+- Validate checkout, webhook replay, and credit fulfillment in Polar sandbox before enabling live billing.
 - Persist purchases, subscription state, and credit grants in the database.
 - Deduct credits when jobs are accepted and restore them on failed runs where needed.
 - Add admin-friendly audit traces for balance changes.
@@ -29,6 +32,7 @@ Monetize Upstage with prepaid credits and subscription tiers while protecting ma
 ## Acceptance criteria
 
 - A user can complete checkout and receive credits or upgraded entitlements.
+- The same purchase-to-fulfillment flow can be verified in Polar sandbox without real money moving.
 - The app blocks generation when balance is insufficient.
 - Credit ledger entries explain why a balance changed.
 

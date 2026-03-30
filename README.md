@@ -196,6 +196,24 @@ Use the full `https://` URL. This setup serves HTTPS on port `1201`; `http://` r
 - `AI_FALLBACK_MODEL` can define a lower-cost hosted fallback such as `google/gemini-2.5-flash-image`.
 - Some Ollama image models have host-platform limits. If local image generation is unavailable, the app records a clear job failure and you can temporarily switch to hosted routing.
 
+## Billing setup
+
+- `POLAR_ACCESS_TOKEN` is used for Polar API access.
+- `POLAR_WEBHOOK_SECRET` validates webhook deliveries.
+- `POLAR_SERVER` should stay on `sandbox` until the full billing flow is verified end-to-end.
+
+## Billing environments
+
+- Local app development: use seeded plans, starter credits, or repo-specific billing stubs for UI and ledger work.
+- Polar sandbox: use `https://sandbox.polar.sh/start` for fake-money checkout and `https://sandbox-api.polar.sh` for API calls.
+- Production Polar: enable only after sandbox checkout, webhook replay handling, and credit fulfillment are all verified.
+
+Sandbox notes:
+
+- Polar sandbox is a separate environment, not a test-mode toggle on production data.
+- Sandbox needs its own account, organization, and tokens.
+- Stripe test cards work in Polar sandbox, for example `4242 4242 4242 4242` with a future expiry and any CVC.
+
 ## Core commands
 
 - `mise run dev` - run the SvelteKit app locally with Bun

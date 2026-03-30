@@ -32,6 +32,7 @@ Current status:
 ## Phase 4 - Monetization And Safety
 
 - Launch credits, plan entitlements, Polar checkout, and billing webhooks.
+- Validate the full checkout-to-credit flow in Polar sandbox before enabling live billing.
 - Enforce server-side balance checks and credit deductions.
 - Add moderation review, abuse handling, and policy-driven denials.
 
@@ -46,6 +47,7 @@ Current status:
 - Every core route works on mobile and desktop.
 - Core actions have empty, loading, success, and error states.
 - Credits, auth, storage, and webhook secrets are separated by environment.
+- Billing environments are explicit: local app development, Polar sandbox, then live production.
 - Generation failures are traceable from UI to provider request metadata.
 - Local and hosted environments share one Vercel AI SDK integration path with provider routing differences isolated to configuration.
 - Billing and moderation workflows are operationally reviewable before launch.
