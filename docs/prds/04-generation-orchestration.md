@@ -45,11 +45,14 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 - Project detail pages now compile a structured room brief JSON and persist durable generation job records.
 - Local routes target Ollama, while hosted routes are prepared for Gemini through Vercel AI Gateway.
 - Job history now stores provider route, request metadata, response metadata, and generated image records.
+- Submission keys are now deterministic per generation plan, which prevents accidental duplicate jobs for repeated requests and concurrent form submissions.
+- Failed jobs can now be retried safely from the project detail page, with attempt metadata and failure classification persisted alongside each run.
 
 ## Remaining follow-up
 
-- Add AI-powered room analysis to enrich the room brief JSON before generation.
 - Move generation execution to a background worker when latency or retry volume grows.
+- Add explicit cancellation rules and operator-facing job diagnostics for support workflows.
+- Connect credit reservation and compensating ledger entries once billing enforcement is live.
 - Add provider-aware critique and rerank passes for future quality control.
 
 ## Non-goals

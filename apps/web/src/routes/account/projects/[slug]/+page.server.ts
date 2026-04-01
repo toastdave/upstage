@@ -2,7 +2,11 @@ import { aspectRatioOptions } from '$lib/generation'
 import { formatProjectType } from '$lib/projects'
 import { buildFallbackRoomBrief, buildRoomBriefSummary, normalizeRoomBrief } from '$lib/room-briefs'
 import { db } from '$lib/server/db'
-import { executeProjectGeneration, loadProjectGenerationState } from '$lib/server/generation-jobs'
+import {
+	executeProjectGeneration,
+	loadProjectGenerationState,
+	retryProjectGeneration,
+} from '$lib/server/generation-jobs'
 import { normalizeOptionalText } from '$lib/server/projects'
 import { buildDraftRoomBrief } from '$lib/server/room-analysis'
 import {
@@ -142,6 +146,26 @@ function decorateAssetWithRoomBrief(
 		roomBrief,
 		roomBriefSummary: asset.roomBriefSummary ?? buildRoomBriefSummary(roomBrief),
 	}
+}
+
+function buildGenerationResultMessage(
+	result: Awaited<ReturnType<typeof executeProjectGeneration>>
+) {
+	if (result.outcome === 'duplicate') {
+		if (result.status === 'queued' || result.status === 'processing') {
+			return 'That same concept run is already in progress. Follow the existing job in the history below.'
+		}
+
+		if (result.status === 'succeeded') {
+			return 'That same concept already finished recently. Review the saved output batch below instead of creating a duplicate run.'
+		}
+	}
+
+	if (result.trigger === 'retry') {
+		return `Retry attempt ${result.retryAttempt} finished. Review the newest output batch in the history below.`
+	}
+
+	return 'Generation finished. Review the newest output batch in the history section below.'
 }
 
 export const load: PageServerLoad = async ({ locals, params }) => {
@@ -332,7 +356,7 @@ export const actions: Actions = {
 		}
 
 		try {
-			await executeProjectGeneration({
+			const result = await executeProjectGeneration({
 				additionalInstructions,
 				aspectRatio,
 				presetId,
@@ -343,8 +367,7 @@ export const actions: Actions = {
 
 			return {
 				form: 'generateConcept',
-				message:
-					'Generation finished. Review the newest output batch in the history section below.',
+				message: buildGenerationResultMessage(result),
 			}
 		} catch (error) {
 			return fail(400, {
@@ -487,6 +510,48 @@ export const actions: Actions = {
 			form: 'reanalyzeRoomBrief',
 			message: 'Room analysis reran and refreshed the draft brief for this photo.',
 			values: { sourceAssetId },
+		}
+	},
+
+	retryGeneration: async ({ locals, params, request }) => {
+		if (!locals.user) {
+			throw redirect(303, `/auth/sign-in?redirectTo=/account/projects/${params.slug}`)
+		}
+
+		await getOwnedProject(params.slug, locals.user.id)
+		const formData = await request.formData()
+		const generationJobEntry = formData.get('generationJobId')
+		const generationJobId = typeof generationJobEntry === 'string' ? generationJobEntry : ''
+
+		if (!generationJobId) {
+			return fail(400, {
+				error: 'Choose a failed generation before requesting a retry.',
+				form: 'retryGeneration',
+				values: { generationJobId },
+			})
+		}
+
+		try {
+			const result = await retryProjectGeneration({
+				jobId: generationJobId,
+				projectSlug: params.slug,
+				userId: locals.user.id,
+			})
+
+			return {
+				form: 'retryGeneration',
+				message: buildGenerationResultMessage(result),
+				values: { generationJobId },
+			}
+		} catch (error) {
+			return fail(400, {
+				error:
+					error instanceof Error
+						? error.message
+						: 'Generation retry failed before completion. Check the job history for more detail.',
+				form: 'retryGeneration',
+				values: { generationJobId },
+			})
 		}
 	},
 

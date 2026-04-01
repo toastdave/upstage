@@ -29,16 +29,17 @@ Current status:
 - Initial generation setup, room brief compilation, provider routing, and job history are in place.
 - Source-photo uploads now create a draft room brief automatically, project pages expose a structured review step, and reviewed briefs feed the generation planner.
 - Project pages now expose a gallery-style before-and-after review surface with persisted favorites and download-ready generated images.
-- Remaining work is focused on AI-assisted room analysis, richer output handling, provider reliability, and comparison UX.
-- The next major slice should center on room-analysis-to-JSON, stronger prompt compilation, and higher-confidence output review.
+- Generation submissions now use deterministic idempotency keys, recent duplicate runs are deduplicated, and failed jobs can be retried safely from the project page.
+- Remaining work is focused on background execution, cancellation, billing enforcement, richer output handling, and support-grade diagnostics.
+- The next major slice should center on credits and billing enforcement, supported by deeper observability and async job processing.
 
 Recommended next-build order:
 
-1. Ship AI room analysis with an editable room brief review step.
-2. Turn job history into a proper gallery with before-and-after review, favorites, and downloads.
-3. Harden orchestration with async processing, retries, and true idempotency.
-4. Launch credits and billing enforcement before broader rollout.
-5. Polish upload, mobile capture, and account surfaces after the core loop is durable.
+1. Launch credits and billing enforcement before broader rollout.
+2. Add async processing, cancellation rules, and stronger operational diagnostics.
+3. Improve output handling with richer gallery and comparison flows.
+4. Polish upload, mobile capture, and account surfaces after the core loop is durable.
+5. Expand preset personalization and collaboration hooks once the core loop is monetized and stable.
 
 Default product decisions for the next slice:
 

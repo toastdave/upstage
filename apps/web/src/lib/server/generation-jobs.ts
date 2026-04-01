@@ -5,6 +5,14 @@ import {
 } from '$lib/server/ai/config'
 import { executeImageGeneration } from '$lib/server/ai/index'
 import { db } from '$lib/server/db'
+import {
+	buildGenerationAttemptKey,
+	buildGenerationSubmissionKey,
+	classifyGenerationFailure,
+	getStoredAdditionalInstructions,
+	normalizeAdditionalInstructions,
+	shouldTreatAsDuplicateJob,
+} from '$lib/server/generation-orchestration'
 import { buildGenerationPlan } from '$lib/server/generation-plan'
 import {
 	buildGenerationAssetStorageKey,
@@ -20,6 +28,16 @@ import {
 	sourceAsset,
 } from '@upstage/db/schema'
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+
+type GenerationTrigger = 'manual' | 'retry'
+
+export type ExecuteProjectGenerationResult = {
+	jobId: string
+	outcome: 'created' | 'duplicate'
+	retryAttempt: number
+	status: 'queued' | 'processing' | 'succeeded' | 'failed' | 'cancelled'
+	trigger: GenerationTrigger
+}
 
 export async function loadProjectGenerationState(projectId: string) {
 	const presets = await db
@@ -130,8 +148,11 @@ export async function executeProjectGeneration(options: {
 	presetId: string
 	projectSlug: string
 	sourceAssetId: string
+	trigger?: GenerationTrigger
 	userId: string
-}) {
+	retryOfJobId?: string
+}): Promise<ExecuteProjectGenerationResult> {
+	const trigger = options.trigger ?? 'manual'
 	const [projectRecord] = await db
 		.select()
 		.from(project)
@@ -170,7 +191,7 @@ export async function executeProjectGeneration(options: {
 	}
 
 	const generationPlan = buildGenerationPlan({
-		additionalInstructions: options.additionalInstructions,
+		additionalInstructions: normalizeAdditionalInstructions(options.additionalInstructions),
 		aspectRatio: options.aspectRatio,
 		preset: presetRecord,
 		project: projectRecord,
@@ -179,34 +200,144 @@ export async function executeProjectGeneration(options: {
 		sourceAsset: sourceAssetRecord,
 	})
 
-	const idempotencyKey = crypto.randomUUID()
 	const provider = getGenerationRoute()
 	const model = getConfiguredGenerationModel(provider)
-
-	const [createdJob] = await db
-		.insert(generationJob)
-		.values({
-			projectId: projectRecord.id,
-			sourceAssetId: sourceAssetRecord.id,
-			presetId: presetRecord.id,
-			status: 'queued',
-			provider,
-			model,
-			prompt: generationPlan.compiledPrompt,
-			styleLabel: projectRecord.styleIntent ?? presetRecord.name,
-			roomType: projectRecord.roomType,
-			aspectRatio: options.aspectRatio,
-			requestedCount: 1,
-			creditCost: generationPlan.creditEstimate,
-			idempotencyKey,
-			requestMetadata: generationPlan.roomBrief,
-			responseMetadata: {},
+	const submissionKey = buildGenerationSubmissionKey({
+		additionalInstructions: options.additionalInstructions,
+		aspectRatio: options.aspectRatio,
+		model,
+		presetId: presetRecord.id,
+		projectId: projectRecord.id,
+		provider,
+		prompt: generationPlan.compiledPrompt,
+		sourceAssetId: sourceAssetRecord.id,
+		userId: options.userId,
+	})
+	const matchingJobs = await db
+		.select({
+			completedAt: generationJob.completedAt,
+			createdAt: generationJob.createdAt,
+			id: generationJob.id,
+			status: generationJob.status,
 		})
-		.returning({ id: generationJob.id })
+		.from(generationJob)
+		.where(
+			and(
+				eq(generationJob.projectId, projectRecord.id),
+				eq(generationJob.sourceAssetId, sourceAssetRecord.id),
+				eq(generationJob.presetId, presetRecord.id),
+				eq(generationJob.aspectRatio, options.aspectRatio),
+				eq(generationJob.provider, provider),
+				eq(generationJob.model, model),
+				eq(generationJob.prompt, generationPlan.compiledPrompt)
+			)
+		)
+		.orderBy(desc(generationJob.createdAt))
+	const duplicateJob = matchingJobs.find((job) => shouldTreatAsDuplicateJob(job))
+
+	if (duplicateJob) {
+		return {
+			jobId: duplicateJob.id,
+			outcome: 'duplicate',
+			retryAttempt: matchingJobs.length,
+			status: duplicateJob.status,
+			trigger,
+		}
+	}
+
+	const retryAttempt = matchingJobs.length + 1
+	const idempotencyKey = buildGenerationAttemptKey(submissionKey, retryAttempt)
+	const acceptedAt = new Date()
+	const baseRequestMetadata = {
+		roomBrief: generationPlan.roomBrief,
+		submission: {
+			additionalInstructions: normalizeAdditionalInstructions(options.additionalInstructions),
+			aspectRatio: options.aspectRatio,
+			presetId: presetRecord.id,
+			presetName: presetRecord.name,
+			retryAttempt,
+			retryOfJobId: options.retryOfJobId ?? null,
+			sourceAssetId: sourceAssetRecord.id,
+			submissionKey,
+			submittedAt: acceptedAt.toISOString(),
+			trigger,
+		},
+	} satisfies Record<string, unknown>
+	const baseResponseMetadata = {
+		execution: {
+			acceptedAt: acceptedAt.toISOString(),
+			retryAttempt,
+			retryOfJobId: options.retryOfJobId ?? null,
+			trigger,
+		},
+	} satisfies Record<string, unknown>
+
+	let createdJob: { id: string } | undefined
+
+	try {
+		;[createdJob] = await db
+			.insert(generationJob)
+			.values({
+				projectId: projectRecord.id,
+				sourceAssetId: sourceAssetRecord.id,
+				presetId: presetRecord.id,
+				status: 'queued',
+				provider,
+				model,
+				prompt: generationPlan.compiledPrompt,
+				styleLabel: projectRecord.styleIntent ?? presetRecord.name,
+				roomType: projectRecord.roomType,
+				aspectRatio: options.aspectRatio,
+				requestedCount: 1,
+				creditCost: generationPlan.creditEstimate,
+				idempotencyKey,
+				requestMetadata: baseRequestMetadata,
+				responseMetadata: baseResponseMetadata,
+			})
+			.returning({ id: generationJob.id })
+	} catch (error) {
+		const [existingJob] = await db
+			.select({
+				id: generationJob.id,
+				status: generationJob.status,
+			})
+			.from(generationJob)
+			.where(eq(generationJob.idempotencyKey, idempotencyKey))
+			.limit(1)
+
+		if (existingJob) {
+			return {
+				jobId: existingJob.id,
+				outcome: 'duplicate',
+				retryAttempt,
+				status: existingJob.status,
+				trigger,
+			}
+		}
+
+		throw error
+	}
+
+	if (!createdJob) {
+		throw new Error('Generation job could not be created')
+	}
+
+	const processingStartedAt = new Date()
 
 	await db
 		.update(generationJob)
-		.set({ startedAt: new Date(), status: 'processing', updatedAt: new Date() })
+		.set({
+			startedAt: processingStartedAt,
+			status: 'processing',
+			updatedAt: processingStartedAt,
+			responseMetadata: {
+				...baseResponseMetadata,
+				execution: {
+					...(baseResponseMetadata.execution as Record<string, unknown>),
+					startedAt: processingStartedAt.toISOString(),
+				},
+			},
+		})
 		.where(eq(generationJob.id, createdJob.id))
 
 	try {
@@ -269,6 +400,8 @@ export async function executeProjectGeneration(options: {
 			})
 		}
 
+		const completedAt = new Date()
+
 		await db
 			.update(generationJob)
 			.set({
@@ -276,30 +409,107 @@ export async function executeProjectGeneration(options: {
 				model: executionResult.model,
 				providerGenerationId: executionResult.providerGenerationId ?? null,
 				requestMetadata: {
+					...baseRequestMetadata,
 					providerRequest: executionResult.requestMetadata,
-					roomBrief: generationPlan.roomBrief,
 				},
-				responseMetadata: executionResult.responseMetadata,
+				responseMetadata: {
+					...executionResult.responseMetadata,
+					execution: {
+						...(baseResponseMetadata.execution as Record<string, unknown>),
+						completedAt: completedAt.toISOString(),
+						imageCount: executionResult.images.length,
+						startedAt: processingStartedAt.toISOString(),
+					},
+					warnings: executionResult.warnings ?? [],
+				},
 				status: 'succeeded',
-				completedAt: new Date(),
-				updatedAt: new Date(),
+				completedAt,
+				updatedAt: completedAt,
 			})
 			.where(eq(generationJob.id, createdJob.id))
 
-		return { jobId: createdJob.id }
+		return {
+			jobId: createdJob.id,
+			outcome: 'created',
+			retryAttempt,
+			status: 'succeeded',
+			trigger,
+		}
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Generation failed unexpectedly'
+		const failure = classifyGenerationFailure(error)
+		const completedAt = new Date()
 
 		await db
 			.update(generationJob)
 			.set({
-				completedAt: new Date(),
-				errorMessage: message,
+				completedAt,
+				errorMessage: failure.message,
+				responseMetadata: {
+					execution: {
+						...(baseResponseMetadata.execution as Record<string, unknown>),
+						completedAt: completedAt.toISOString(),
+						startedAt: processingStartedAt.toISOString(),
+					},
+					failure: {
+						...failure,
+						failedAt: completedAt.toISOString(),
+					},
+				},
 				status: 'failed',
-				updatedAt: new Date(),
+				updatedAt: completedAt,
 			})
 			.where(eq(generationJob.id, createdJob.id))
 
 		throw error
 	}
+}
+
+export async function retryProjectGeneration(options: {
+	jobId: string
+	projectSlug: string
+	userId: string
+}) {
+	const [jobRecord] = await db
+		.select({
+			aspectRatio: generationJob.aspectRatio,
+			id: generationJob.id,
+			presetId: generationJob.presetId,
+			projectSlug: project.slug,
+			requestMetadata: generationJob.requestMetadata,
+			sourceAssetId: generationJob.sourceAssetId,
+			status: generationJob.status,
+		})
+		.from(generationJob)
+		.innerJoin(project, eq(project.id, generationJob.projectId))
+		.where(
+			and(
+				eq(generationJob.id, options.jobId),
+				eq(project.ownerUserId, options.userId),
+				eq(project.slug, options.projectSlug)
+			)
+		)
+		.limit(1)
+
+	if (!jobRecord) {
+		throw new Error('Generation job not found')
+	}
+
+	if (jobRecord.status !== 'failed') {
+		throw new Error('Only failed jobs can be retried')
+	}
+
+	if (!jobRecord.presetId) {
+		throw new Error('This generation cannot be retried because its preset is unavailable')
+	}
+
+	return executeProjectGeneration({
+		additionalInstructions: getStoredAdditionalInstructions(jobRecord.requestMetadata),
+		aspectRatio: jobRecord.aspectRatio,
+		presetId: jobRecord.presetId,
+		projectSlug: jobRecord.projectSlug,
+		retryOfJobId: jobRecord.id,
+		sourceAssetId: jobRecord.sourceAssetId,
+		trigger: 'retry',
+		userId: options.userId,
+	})
 }

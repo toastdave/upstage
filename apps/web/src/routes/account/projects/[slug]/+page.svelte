@@ -15,6 +15,7 @@ type ActionValues = {
 	additionalInstructions?: string
 	aspectRatio?: string
 	generationImageId?: string
+	generationJobId?: string
 	presetId?: string
 	sourceAssetId?: string
 }
@@ -180,6 +181,46 @@ function selectGalleryImage(jobId: string, imageId: string) {
 
 function buildDownloadUrl(path: string) {
 	return `${path}?download=1`
+}
+
+function getSubmissionMetadata(job: GeneratedJob) {
+	if (!job.requestMetadata || typeof job.requestMetadata !== 'object') {
+		return null
+	}
+
+	const submission = 'submission' in job.requestMetadata ? job.requestMetadata.submission : null
+
+	return submission && typeof submission === 'object'
+		? (submission as Record<string, unknown>)
+		: null
+}
+
+function getFailureMetadata(job: GeneratedJob) {
+	if (!job.responseMetadata || typeof job.responseMetadata !== 'object') {
+		return null
+	}
+
+	const failure = 'failure' in job.responseMetadata ? job.responseMetadata.failure : null
+
+	return failure && typeof failure === 'object' ? (failure as Record<string, unknown>) : null
+}
+
+function getRetryAttempt(job: GeneratedJob) {
+	const retryAttempt = getSubmissionMetadata(job)?.retryAttempt
+
+	return typeof retryAttempt === 'number' ? retryAttempt : null
+}
+
+function getFailureCategory(job: GeneratedJob) {
+	const category = getFailureMetadata(job)?.category
+
+	return typeof category === 'string' && category.length > 0 ? category : null
+}
+
+function isRetryableFailure(job: GeneratedJob) {
+	const retryable = getFailureMetadata(job)?.retryable
+
+	return typeof retryable === 'boolean' ? retryable : true
 }
 
 async function copyGalleryImageLink(imageId: string, path: string) {
@@ -447,17 +488,17 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 					</button>
 				</form>
 
-				{#if form?.form === 'generateConcept' && form.message}
+				{#if (form?.form === 'generateConcept' || form?.form === 'retryGeneration') && form.message}
 					<p class="mt-5 rounded-2xl border border-moss-500/20 bg-moss-500/10 px-4 py-3 text-sm text-moss-500">
 						{form.message}
 					</p>
 				{/if}
 
-				{#if form?.form === 'generateConcept' && form.error}
+				{#if (form?.form === 'generateConcept' || form?.form === 'retryGeneration') && form.error}
 					<div class="mt-5 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-4 text-sm text-terracotta-500">
 						<p>{form.error}</p>
 						<a class="mt-3 inline-flex rounded-full border border-terracotta-500/20 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-terracotta-500" href="#generation-form">
-							Retry generation
+							{form.form === 'retryGeneration' ? 'Retry failed run' : 'Retry generation'}
 						</a>
 					</div>
 				{/if}
@@ -668,6 +709,9 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 				{:else}
 					<div class="mt-6 space-y-5">
 						{#each data.generationState.jobs as job (job.id)}
+							{@const retryAttempt = getRetryAttempt(job)}
+							{@const failureCategory = getFailureCategory(job)}
+							{@const retryableFailure = isRetryableFailure(job)}
 							<div class="rounded-[1.75rem] border border-ink-950/10 bg-paper-100/70 p-5">
 								<div class="flex flex-wrap items-start justify-between gap-4">
 									<div>
@@ -683,8 +727,14 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 								<div class="mt-4 flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-ink-700/80">
 									<span class="rounded-full bg-white px-3 py-1">Created {new Date(job.createdAt).toLocaleString()}</span>
 									<span class="rounded-full bg-white px-3 py-1">Est. {job.creditCost} credits</span>
+									{#if retryAttempt}
+										<span class="rounded-full bg-white px-3 py-1">Attempt {retryAttempt}</span>
+									{/if}
 									{#if job.completedAt}
 										<span class="rounded-full bg-white px-3 py-1">Completed {new Date(job.completedAt).toLocaleString()}</span>
+									{/if}
+									{#if failureCategory}
+										<span class="rounded-full bg-terracotta-500/10 px-3 py-1 text-terracotta-500">{failureCategory}</span>
 									{/if}
 								</div>
 
@@ -692,6 +742,22 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 									<p class="mt-4 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
 										{job.errorMessage}
 									</p>
+								{/if}
+
+								{#if job.status === 'failed'}
+									<div class="mt-4 flex flex-wrap gap-3">
+										<form method="POST" action="?/retryGeneration">
+											<input name="generationJobId" type="hidden" value={job.id} />
+											<button class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm font-semibold text-ink-900 disabled:opacity-60" disabled={!retryableFailure} type="submit">
+												Retry failed run
+											</button>
+										</form>
+										{#if !retryableFailure}
+											<p class="rounded-full border border-terracotta-500/15 bg-terracotta-500/8 px-4 py-2 text-sm text-terracotta-500">
+												Fix the underlying issue before retrying this run.
+											</p>
+										{/if}
+									</div>
 								{/if}
 
 								{#if job.images.length > 0}

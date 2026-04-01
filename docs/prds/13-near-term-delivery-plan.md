@@ -95,6 +95,12 @@ Exit criteria:
 - Failed jobs can be retried safely.
 - Job state and provider failure details are traceable without reading raw logs.
 
+Current status:
+
+- Initial hardening is shipped. Generation submissions now use deterministic idempotency keys, recent duplicate runs are deduplicated, and failed jobs can be retried safely from the project page.
+- Failure metadata now records retry eligibility and coarse failure categories in job history.
+- The remaining work in this tranche is to move execution off the request path, add cancellation rules, and expose stronger support-facing diagnostics.
+
 ### 4. Credits and billing enforcement
 
 Why next:
