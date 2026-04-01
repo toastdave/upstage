@@ -31,6 +31,16 @@ Turn generated assets into usable deliverables for listing packages, presentatio
 - A user can download at least one generated image.
 - Favorite state is persisted for preferred variants.
 
+## Initial implementation status
+
+- Project pages now show generation history and render saved output images inline with each job.
+- Source images and output batches already live together in the project detail workflow, even though the dedicated comparison and deliverables UX is still minimal.
+
+## Remaining follow-up
+
+- Add explicit before-and-after comparison tools, download actions, and favorite state.
+- Break generation history into a richer gallery layout with variant grouping and deliverable-focused controls.
+
 ## Non-goals
 
 - PDF presentation builder in v1

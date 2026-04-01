@@ -28,6 +28,7 @@ Current status:
 
 - Initial generation setup, room brief compilation, provider routing, and job history are in place.
 - Remaining work is focused on AI-assisted room analysis, richer output handling, provider reliability, and comparison UX.
+- The next major slice should center on room-analysis-to-JSON, stronger prompt compilation, and higher-confidence output review.
 
 ## Phase 4 - Monetization And Safety
 

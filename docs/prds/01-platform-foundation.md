@@ -35,6 +35,17 @@ Create the technical and design foundation for a fast-moving SvelteKit monolith 
 - Schema, seeds, and local services run without manual patching.
 - Local AI requests can be exercised against Ollama without requiring production model credentials.
 
+## Initial implementation status
+
+- Bun monorepo, SvelteKit shell, Better Auth, Drizzle, Docker Compose, and mise workflow are in place.
+- Local infrastructure now includes Postgres, MinIO, Mailpit, and Ollama.
+- Environment defaults and docs distinguish local Ollama routing from hosted Gemini routing.
+
+## Remaining follow-up
+
+- Add CI entrypoints and deployment-specific environment validation.
+- Add a dedicated background worker package once generation latency or retry volume requires it.
+
 ## Non-goals
 
 - Production infra provisioning

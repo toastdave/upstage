@@ -16,6 +16,10 @@ These PRDs break the Upstage MVP and follow-on roadmap into implementation-sized
 - `10-observability-and-operations.md`
 - `11-growth-and-collaboration.md`
 
+## Supplemental PRDs
+
+- `12-room-analysis-and-edit-briefs.md`
+
 ## Supporting docs
 
 - `implementation-roadmap.md` - phased delivery plan across all epics

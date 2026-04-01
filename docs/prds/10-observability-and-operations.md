@@ -33,6 +33,16 @@ Ensure the MVP can be operated, debugged, and improved after launch without gues
 - Launch docs include recovery notes for generation failures and webhook issues.
 - Generation logs clearly identify whether a request ran through local Ollama or Gemini via Vercel AI Gateway, plus any capability downgrade or unsupported-local-host message.
 
+## Initial implementation status
+
+- Generation jobs now persist provider route, request metadata, response metadata, and failure messages.
+- Local infrastructure and README guidance already document Ollama setup and route selection.
+
+## Remaining follow-up
+
+- Add explicit structured logging, analytics events, and admin-friendly replay tooling.
+- Add visibility into per-job latency, output counts, and provider capability downgrade reasons in the UI or internal tooling.
+
 ## Non-goals
 
 - Full data warehouse pipelines

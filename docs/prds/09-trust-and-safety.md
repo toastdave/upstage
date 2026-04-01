@@ -31,6 +31,16 @@ Protect Upstage from misuse, copyright headaches, and unsafe image generations w
 - The app stores review reasons and timestamps.
 - Users see clear guidance when content is rejected.
 
+## Initial implementation status
+
+- Source assets and generated images already carry moderation-ready schema fields.
+- Project and generation workflows are storing enough metadata to support future review and denial flows.
+
+## Remaining follow-up
+
+- Add actual moderation execution, review queues, and user-facing rejection messaging.
+- Add provider and policy guardrails before generation requests are accepted.
+
 ## Non-goals
 
 - Advanced CV-based content classification pipeline

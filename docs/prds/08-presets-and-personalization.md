@@ -33,6 +33,16 @@ Make Upstage feel opinionated and high-conviction by helping users start from te
 - Presets are grouped clearly by workflow or aesthetic category.
 - Users can save favorite presets for later reuse.
 
+## Initial implementation status
+
+- Starter presets are seeded in the database and available in the project generation setup flow.
+- Presets already compile into provider-aware prompts while keeping the product-facing preset catalog stable.
+
+## Remaining follow-up
+
+- Add preset browsing beyond the current select menu and expose richer preset descriptions/examples.
+- Add favorites, recents, and user-level personalization on top of the current seeded catalog.
+
 ## Non-goals
 
 - User-generated marketplace presets
