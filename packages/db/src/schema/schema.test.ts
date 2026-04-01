@@ -14,6 +14,7 @@ describe('database schema', () => {
 		expect(sourceAsset.roomBrief.name).toBe('room_brief')
 		expect(sourceAsset.roomBriefStatus.name).toBe('room_brief_status')
 		expect(sourceAsset.archivedAt.name).toBe('archived_at')
+		expect(generationImage.isFavorite.name).toBe('is_favorite')
 		expect(generationImage.mimeType.name).toBe('mime_type')
 	})
 

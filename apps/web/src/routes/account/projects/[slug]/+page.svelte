@@ -14,17 +14,22 @@ const { data, form } = $props<{ data: PageData; form?: ActionData }>()
 type ActionValues = {
 	additionalInstructions?: string
 	aspectRatio?: string
+	generationImageId?: string
 	presetId?: string
 	sourceAssetId?: string
 }
 
 type ProjectAsset = PageData['activeAssets'][number]
+type GeneratedJob = PageData['generationState']['jobs'][number]
+type GeneratedImage = GeneratedJob['images'][number]
 type MatchingPreset = PageData['generationState']['presets'][number]
 type RoomBriefField = RoomBriefFieldDefinition
 
 const actionValues = $derived(((form ?? {}) as { values?: ActionValues }).values)
 
 const uploadDimensions = $state<Record<string, { height: string; width: string }>>({})
+const selectedGalleryImageByJob = $state<Record<string, string>>({})
+let copiedGalleryImageId = $state('')
 let selectedAspectRatio = $state('')
 let selectedPresetId = $state('')
 let selectedSourceAssetId = $state('')
@@ -50,6 +55,13 @@ const selectedAsset = $derived(
 const selectedRoomBrief = $derived(selectedAsset?.roomBrief ?? emptyRoomBrief)
 const selectedRoomBriefStatus = $derived(selectedAsset?.roomBriefStatus ?? 'missing')
 const canGenerate = $derived(data.activeAssets.length > 0 && matchingPresets.length > 0)
+const favoriteDeliverableCount = $derived(
+	data.generationState.jobs.reduce(
+		(count: number, job: GeneratedJob) =>
+			count + job.images.filter((image: GeneratedImage) => image.isFavorite).length,
+		0
+	)
+)
 
 $effect(() => {
 	if (
@@ -68,6 +80,24 @@ $effect(() => {
 
 	if (!aspectRatioOptions.some((option) => option.value === selectedAspectRatio)) {
 		selectedAspectRatio = matchingPresets[0]?.defaultAspectRatio ?? '4:3'
+	}
+})
+
+$effect(() => {
+	for (const job of data.generationState.jobs) {
+		const preferredImage =
+			job.images.find((image: GeneratedImage) => image.isFavorite) ?? job.images[0]
+
+		if (!preferredImage) {
+			continue
+		}
+
+		if (
+			!selectedGalleryImageByJob[job.id] ||
+			!job.images.some((image: GeneratedImage) => image.id === selectedGalleryImageByJob[job.id])
+		) {
+			selectedGalleryImageByJob[job.id] = preferredImage.id
+		}
 	}
 })
 
@@ -131,6 +161,36 @@ function getRoomBriefMaxLength(field: RoomBriefField) {
 		default:
 			return 400
 	}
+}
+
+function getSelectedGalleryImage(job: GeneratedJob) {
+	const selectedImageId = selectedGalleryImageByJob[job.id]
+
+	return (
+		job.images.find((image: GeneratedImage) => image.id === selectedImageId) ??
+		job.images.find((image: GeneratedImage) => image.isFavorite) ??
+		job.images[0] ??
+		null
+	)
+}
+
+function selectGalleryImage(jobId: string, imageId: string) {
+	selectedGalleryImageByJob[jobId] = imageId
+}
+
+function buildDownloadUrl(path: string) {
+	return `${path}?download=1`
+}
+
+async function copyGalleryImageLink(imageId: string, path: string) {
+	const url = new URL(path, window.location.origin).toString()
+	await navigator.clipboard.writeText(url)
+	copiedGalleryImageId = imageId
+	window.setTimeout(() => {
+		if (copiedGalleryImageId === imageId) {
+			copiedGalleryImageId = ''
+		}
+	}, 1600)
 }
 </script>
 
@@ -399,6 +459,125 @@ function getRoomBriefMaxLength(field: RoomBriefField) {
 						<a class="mt-3 inline-flex rounded-full border border-terracotta-500/20 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-terracotta-500" href="#generation-form">
 							Retry generation
 						</a>
+					</div>
+				{/if}
+			</div>
+
+			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur" id="gallery-review">
+				<div class="flex flex-wrap items-start justify-between gap-4">
+					<div>
+						<p class="text-sm uppercase tracking-[0.28em] text-terracotta-500">Gallery and deliverables</p>
+						<h2 class="mt-3 font-display text-3xl text-ink-950">Review before and after</h2>
+						<p class="mt-3 max-w-3xl text-sm leading-7 text-ink-700">
+							Compare each generated result against its source photo, mark favorites, and download the versions you want to keep.
+						</p>
+					</div>
+					<span class="rounded-full border border-ink-950/10 bg-paper-100 px-4 py-2 text-xs uppercase tracking-[0.24em] text-ink-700">
+						{favoriteDeliverableCount} favorites
+					</span>
+				</div>
+
+				{#if form?.form === 'toggleFavorite' && form.message}
+					<p class="mt-5 rounded-2xl border border-moss-500/20 bg-moss-500/10 px-4 py-3 text-sm text-moss-500">
+						{form.message}
+					</p>
+				{/if}
+
+				{#if form?.form === 'toggleFavorite' && form.error}
+					<p class="mt-5 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
+						{form.error}
+					</p>
+				{/if}
+
+				{#if data.generationState.jobs.length === 0}
+					<div class="mt-6 rounded-[1.75rem] border border-dashed border-ink-950/15 bg-paper-100/75 p-6 text-sm leading-7 text-ink-700">
+						No deliverables yet. Run a generation to unlock before-and-after review, downloads, and favorites.
+					</div>
+				{:else}
+					<div class="mt-6 space-y-6">
+						{#each data.generationState.jobs as job (job.id)}
+							{@const selectedImage = getSelectedGalleryImage(job)}
+							<div class="rounded-[1.75rem] border border-ink-950/10 bg-paper-100/70 p-5">
+								<div class="flex flex-wrap items-start justify-between gap-4">
+									<div>
+										<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">{job.provider}</p>
+										<h3 class="mt-2 font-display text-2xl text-ink-950">{job.styleLabel ?? 'Generated concept'}</h3>
+										<p class="mt-2 text-sm text-ink-700">
+											{job.sourceAsset?.originalFilename ?? 'Source photo'} - {formatAspectRatio(job.aspectRatio)}
+										</p>
+									</div>
+									<div class="flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-ink-700/80">
+										<span class="rounded-full bg-white px-3 py-1">{job.images.length} outputs</span>
+										<span class="rounded-full bg-white px-3 py-1">Created {new Date(job.createdAt).toLocaleDateString()}</span>
+										{#if job.images.some((image: GeneratedImage) => image.isFavorite)}
+											<span class="rounded-full bg-moss-500/12 px-3 py-1 text-moss-500">Favorite saved</span>
+										{/if}
+									</div>
+								</div>
+
+								{#if selectedImage && job.sourceAsset}
+									<div class="mt-5 grid gap-4 lg:grid-cols-2">
+										<div class="overflow-hidden rounded-[1.5rem] border border-ink-950/10 bg-white">
+											<div class="flex items-center justify-between border-b border-ink-950/10 px-4 py-3 text-xs uppercase tracking-[0.24em] text-ink-700">
+												<span>Before</span>
+												<span>{job.sourceAsset.originalFilename ?? 'Source photo'}</span>
+											</div>
+											<div class="aspect-[4/3] bg-ink-950/5">
+												<img alt={job.sourceAsset.originalFilename ?? 'Source photo'} class="h-full w-full object-cover" src={job.sourceAsset.url} />
+											</div>
+										</div>
+
+										<div class="overflow-hidden rounded-[1.5rem] border border-ink-950/10 bg-white">
+											<div class="flex items-center justify-between border-b border-ink-950/10 px-4 py-3 text-xs uppercase tracking-[0.24em] text-ink-700">
+												<span>After</span>
+												<span>{selectedImage.isFavorite ? 'Favorite' : `Output ${selectedImage.sortOrder + 1}`}</span>
+											</div>
+											<div class="aspect-[4/3] bg-ink-950/5">
+												<img alt={job.styleLabel ?? 'Generated concept'} class="h-full w-full object-cover" src={selectedImage.url} />
+											</div>
+											<div class="space-y-3 p-4 text-sm text-ink-700">
+												<p>{selectedImage.mimeType}{#if selectedImage.width && selectedImage.height} - {selectedImage.width} x {selectedImage.height}{/if}</p>
+												<div class="flex flex-wrap gap-3">
+													<form method="POST" action="?/toggleFavorite">
+														<input name="generationImageId" type="hidden" value={selectedImage.id} />
+														<button class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm font-semibold text-ink-900" type="submit">
+															{selectedImage.isFavorite ? 'Unfavorite' : 'Favorite'}
+														</button>
+													</form>
+													<button class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm font-semibold text-ink-900" type="button" onclick={() => window.location.assign(buildDownloadUrl(selectedImage.url))}>
+														Download
+													</button>
+													<button class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm font-semibold text-ink-900" type="button" onclick={() => copyGalleryImageLink(selectedImage.id, selectedImage.url)}>
+														{copiedGalleryImageId === selectedImage.id ? 'Link copied' : 'Copy link'}
+													</button>
+												</div>
+											</div>
+										</div>
+									</div>
+								{/if}
+
+								{#if job.images.length > 1}
+									<div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+										{#each job.images as image (image.id)}
+											<button class={`overflow-hidden rounded-2xl border text-left transition ${selectedImage?.id === image.id ? 'border-moss-500 bg-white shadow-[0_18px_48px_-30px_rgba(77,130,92,0.6)]' : 'border-ink-950/10 bg-white hover:border-ink-950/30'}`} type="button" onclick={() => selectGalleryImage(job.id, image.id)}>
+												<div class="aspect-[4/3] bg-ink-950/5">
+													<img alt={job.styleLabel ?? 'Generated concept'} class="h-full w-full object-cover" src={image.url} />
+												</div>
+												<div class="flex items-center justify-between gap-3 p-4 text-sm text-ink-700">
+													<div>
+														<p class="font-semibold text-ink-950">Output {image.sortOrder + 1}</p>
+														<p class="mt-1">{image.mimeType}</p>
+													</div>
+													{#if image.isFavorite}
+														<span class="rounded-full bg-moss-500/12 px-3 py-1 text-xs uppercase tracking-[0.24em] text-moss-500">Favorite</span>
+													{/if}
+												</div>
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/each}
 					</div>
 				{/if}
 			</div>

@@ -65,6 +65,7 @@ export async function loadProjectGenerationState(projectId: string) {
 						createdAt: generationImage.createdAt,
 						height: generationImage.height,
 						id: generationImage.id,
+						isFavorite: generationImage.isFavorite,
 						jobId: generationImage.jobId,
 						mimeType: generationImage.mimeType,
 						seed: generationImage.seed,
@@ -82,6 +83,28 @@ export async function loadProjectGenerationState(projectId: string) {
 					.orderBy(generationImage.sortOrder, generationImage.createdAt)
 
 	const imagesByJobId = new Map<string, typeof jobImages>()
+	const sourceAssets =
+		jobs.length === 0
+			? []
+			: await db
+					.select({
+						id: sourceAsset.id,
+						originalFilename: sourceAsset.originalFilename,
+						roomBriefStatus: sourceAsset.roomBriefStatus,
+						roomBriefSummary: sourceAsset.roomBriefSummary,
+						url: sourceAsset.url,
+						width: sourceAsset.width,
+						height: sourceAsset.height,
+					})
+					.from(sourceAsset)
+					.where(
+						inArray(
+							sourceAsset.id,
+							jobs.map((job) => job.sourceAssetId)
+						)
+					)
+
+	const sourceAssetById = new Map(sourceAssets.map((asset) => [asset.id, asset]))
 
 	for (const image of jobImages) {
 		const existing = imagesByJobId.get(image.jobId) ?? []
@@ -95,6 +118,7 @@ export async function loadProjectGenerationState(projectId: string) {
 		jobs: jobs.map((job) => ({
 			...job,
 			images: imagesByJobId.get(job.id) ?? [],
+			sourceAsset: sourceAssetById.get(job.sourceAssetId) ?? null,
 		})),
 		presets,
 	}

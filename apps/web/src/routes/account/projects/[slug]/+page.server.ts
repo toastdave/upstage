@@ -17,7 +17,7 @@ import {
 	validateSourceUpload,
 } from '$lib/server/uploads'
 import { error, fail, redirect } from '@sveltejs/kit'
-import { project, sourceAsset } from '@upstage/db/schema'
+import { generationImage, generationJob, project, sourceAsset } from '@upstage/db/schema'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { Actions, PageServerLoad } from './$types'
 
@@ -47,6 +47,20 @@ async function getReplaceableAsset(sourceAssetId: string, projectId: string, use
 				isNull(sourceAsset.archivedAt)
 			)
 		)
+		.limit(1)
+
+	return record ?? null
+}
+
+async function getProjectGenerationImage(generationImageId: string, projectId: string) {
+	const [record] = await db
+		.select({
+			id: generationImage.id,
+			isFavorite: generationImage.isFavorite,
+		})
+		.from(generationImage)
+		.innerJoin(generationJob, eq(generationJob.id, generationImage.jobId))
+		.where(and(eq(generationImage.id, generationImageId), eq(generationJob.projectId, projectId)))
 		.limit(1)
 
 	return record ?? null
@@ -473,6 +487,41 @@ export const actions: Actions = {
 			form: 'reanalyzeRoomBrief',
 			message: 'Room analysis reran and refreshed the draft brief for this photo.',
 			values: { sourceAssetId },
+		}
+	},
+
+	toggleFavorite: async ({ locals, params, request }) => {
+		if (!locals.user) {
+			throw redirect(303, `/auth/sign-in?redirectTo=/account/projects/${params.slug}`)
+		}
+
+		const projectRecord = await getOwnedProject(params.slug, locals.user.id)
+		const formData = await request.formData()
+		const generationImageEntry = formData.get('generationImageId')
+		const generationImageId = typeof generationImageEntry === 'string' ? generationImageEntry : ''
+		const targetImage = await getProjectGenerationImage(generationImageId, projectRecord.id)
+
+		if (!targetImage) {
+			return fail(404, {
+				error: 'We could not find that generated image in this project.',
+				form: 'toggleFavorite',
+				values: { generationImageId },
+			})
+		}
+
+		const nextValue = !targetImage.isFavorite
+
+		await db
+			.update(generationImage)
+			.set({ isFavorite: nextValue })
+			.where(eq(generationImage.id, targetImage.id))
+
+		return {
+			form: 'toggleFavorite',
+			message: nextValue
+				? 'Marked this render as a favorite deliverable.'
+				: 'Removed this render from favorites.',
+			values: { generationImageId },
 		}
 	},
 }

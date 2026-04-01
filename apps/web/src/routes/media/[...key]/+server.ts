@@ -19,6 +19,9 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		throw error(404, 'Asset not found')
 	}
 
+	const url = new URL(request.url)
+	const download = url.searchParams.get('download') === '1'
+
 	const [sourceMedia] = await db
 		.select({
 			mimeType: sourceAsset.mimeType,
@@ -37,9 +40,12 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		? [null]
 		: await db
 				.select({
+					imageId: generationImage.id,
 					mimeType: generationImage.mimeType,
 					originalFilename: project.title,
+					sortOrder: generationImage.sortOrder,
 					storageKey: generationImage.storageKey,
+					styleLabel: generationJob.styleLabel,
 				})
 				.from(generationImage)
 				.innerJoin(generationJob, eq(generationJob.id, generationImage.jobId))
@@ -61,10 +67,19 @@ export const GET: RequestHandler = async ({ params, request }) => {
 		throw error(404, 'Asset body not found')
 	}
 
+	const generationFilename = generationMedia
+		? `${generationMedia.originalFilename}-${generationMedia.styleLabel ?? 'concept'}-${generationMedia.sortOrder + 1}.${(
+				generationMedia.mimeType.split('/').pop() ?? 'png'
+			).replace('jpeg', 'jpg')}`
+				.toLowerCase()
+				.replace(/[^a-z0-9.-]+/g, '-')
+				.replace(/^-+|-+$/g, '')
+		: null
+
 	return new Response(object.Body.transformToWebStream(), {
 		headers: {
 			'cache-control': 'private, max-age=60',
-			'content-disposition': `inline; filename="${sourceMedia ? sourceFilename : `${asset.originalFilename}.png`}"`,
+			'content-disposition': `${download ? 'attachment' : 'inline'}; filename="${sourceMedia ? sourceFilename : (generationFilename ?? `${asset.originalFilename}.png`)}"`,
 			'content-type': object.ContentType ?? asset.mimeType,
 		},
 	})

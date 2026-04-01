@@ -70,6 +70,11 @@ Exit criteria:
 
 - A user can browse project outputs, compare source to result, favorite a preferred image, and download a deliverable.
 
+Current status:
+
+- Initial delivery is shipped. Project pages now include a gallery-style before-and-after review surface, persisted favorite toggles, download actions, and copy-link controls for generated images.
+- The remaining work in this tranche is to split the gallery into richer library and job-detail views, improve export framing, and scale the browsing UX for larger output sets.
+
 ### 3. Orchestration hardening
 
 Why next:

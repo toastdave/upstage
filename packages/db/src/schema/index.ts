@@ -238,6 +238,7 @@ export const generationImage = pgTable(
 		url: text('url').notNull(),
 		mimeType: varchar('mime_type', { length: 80 }).notNull().default('image/png'),
 		revisedPrompt: text('revised_prompt'),
+		isFavorite: boolean('is_favorite').notNull().default(false),
 		seed: integer('seed'),
 		width: integer('width'),
 		height: integer('height'),
