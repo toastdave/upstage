@@ -19,6 +19,7 @@ These PRDs break the Upstage MVP and follow-on roadmap into implementation-sized
 ## Supplemental PRDs
 
 - `12-room-analysis-and-edit-briefs.md`
+- `13-near-term-delivery-plan.md`
 
 ## Supporting docs
 

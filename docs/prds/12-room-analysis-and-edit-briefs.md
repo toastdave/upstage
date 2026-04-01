@@ -24,6 +24,14 @@ Introduce a structured room-analysis layer that turns uploaded source photos int
 - Users must be able to correct or override the AI-generated brief.
 - The same room brief structure should work across local Ollama analysis and hosted generation routes.
 
+## Recommended product defaults
+
+- Automatically run room analysis after the first successful source-photo upload, then offer a manual re-analyze action from the project page.
+- Present the brief in structured review sections backed by typed JSON rather than exposing a raw JSON editor in the MVP.
+- Track field provenance so the UI can distinguish AI-inferred, user-confirmed, and locked protected-element fields.
+- Keep the first pass focused on one analyzed source image and one generation submission path, then expand to richer variant flows after gallery UX is in place.
+- Treat hosted Gemini generation as the production baseline while keeping Ollama analysis and generation support available for local development.
+
 ## Recommended brief structure
 
 - Room type and probable property type
@@ -47,6 +55,8 @@ Introduce a structured room-analysis layer that turns uploaded source photos int
 
 - A user can ask Upstage to analyze a room photo and get back a structured room brief.
 - The user can edit the brief before generating outputs.
+- The first source-photo upload can populate a draft brief automatically, and the user can rerun analysis when needed.
+- The review step makes inferred, confirmed, and locked fields visible before generation.
 - The generation layer consumes the same room brief shape regardless of provider route.
 
 ## Relationship to other PRDs

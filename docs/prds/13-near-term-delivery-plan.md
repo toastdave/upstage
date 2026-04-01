@@ -1,0 +1,136 @@
+# Near-term Delivery Plan
+
+## Goal
+
+Turn the current foundation into a product-ready core loop by delivering guided room analysis, reviewable outputs, reliable orchestration, and enforceable billing in a clear sequence.
+
+## Why this exists
+
+- Upstage already has auth, projects, uploads, storage-backed assets, and durable generation job records.
+- The biggest gap between the current app and the PRDs is the missing guided workflow between upload and generation.
+- The next implementation slice should close product-risk first, then launch-risk.
+
+## Current platform readout
+
+- Foundation, auth, project creation, and source-photo management are working.
+- Generation requests already persist durable jobs, provider metadata, and output images.
+- The main missing product layers are room analysis, deliverable review, orchestration hardening, and billing enforcement.
+
+## Recommended defaults
+
+- Run room analysis automatically after the first successful source-photo upload, with a manual re-analyze action available on the project page.
+- Use a structured brief editor backed by typed JSON instead of exposing raw JSON in the MVP.
+- Accept single-output generation in the next slice, then add richer variant batches after the gallery and review surfaces land.
+- Use Gemini as the hosted production-default provider and keep Ollama as the local development route.
+- Reserve or deduct credits when a job is accepted, then issue a compensating ledger entry if the run fails before a usable output is saved.
+
+## Recommended delivery order
+
+### 1. Room analysis and editable brief review
+
+Why first:
+
+- This is the clearest PRD priority and the highest-leverage product improvement.
+- It turns Upstage from a prompt form into a guided workflow.
+
+Scope:
+
+- Define the durable room brief schema used by analysis and generation.
+- Add analysis execution and persistence for the primary source photo.
+- Show the draft brief on the project page with sectioned review and edit controls.
+- Mark fields as inferred, confirmed, or locked where appropriate.
+- Feed the reviewed brief into provider-specific prompt compilation.
+
+Exit criteria:
+
+- A new project with a source photo can produce a draft room brief.
+- The brief is editable before generation.
+- Generation uses the reviewed brief rather than only form-entered fields.
+
+### 2. Gallery, comparison, and deliverables
+
+Why next:
+
+- Users need a deliverable-focused review surface, not only inline job history.
+- This is the fastest follow-up to make generations feel useful and complete.
+
+Scope:
+
+- Add a gallery view grouped by job and source photo.
+- Add before-and-after comparison, favorite state, and download actions.
+- Preserve mobile usability and clear empty, loading, success, and failure states.
+
+Exit criteria:
+
+- A user can browse project outputs, compare source to result, favorite a preferred image, and download a deliverable.
+
+### 3. Orchestration hardening
+
+Why next:
+
+- The current pipeline is durable but not yet resilient enough for launch.
+- Billing and support depend on reliable retries, traceability, and idempotency.
+
+Scope:
+
+- Move generation processing off the request path when needed.
+- Implement true idempotency for submission and retry paths.
+- Add retry handling, cancellation rules, and better failure diagnostics.
+- Make job status transitions operationally inspectable.
+
+Exit criteria:
+
+- Duplicate submissions do not create accidental extra jobs.
+- Failed jobs can be retried safely.
+- Job state and provider failure details are traceable without reading raw logs.
+
+### 4. Credits and billing enforcement
+
+Why next:
+
+- Monetization is mostly schema-ready today.
+- Launching billing before orchestration is trustworthy would create support and margin risk.
+
+Scope:
+
+- Build pricing and account billing surfaces.
+- Add Polar checkout, portal access, and webhook ingestion.
+- Persist credit ledger entries for grants, reservations, deductions, refunds, and manual adjustments.
+- Enforce insufficient-balance checks before accepting generation jobs.
+
+Exit criteria:
+
+- Checkout can be validated in Polar sandbox end to end.
+- Generation is blocked when balance is insufficient.
+- Every balance change is explainable from the ledger.
+
+### 5. Upload and account polish
+
+Why after the core loop:
+
+- These improvements matter, but they compound best once the main generation flow is trustworthy.
+
+Scope:
+
+- Add direct signed uploads and multi-file upload UX.
+- Improve mobile capture and project detail states.
+- Add account settings, billing summary, and profile polish.
+
+Exit criteria:
+
+- Upload flows feel fast on mobile and desktop.
+- Users can manage profile and billing state without leaving the workspace.
+
+## Explicitly deferred until later
+
+- Advanced masking or segmentation tools
+- Multi-variant batch generation as the default flow
+- Share portals and collaboration features
+- Enterprise billing or postpaid metering
+
+## Relationship to other PRDs
+
+- Builds on `03-projects-and-uploads.md`
+- Prioritizes `12-room-analysis-and-edit-briefs.md` and `06-galleries-and-deliverables.md`
+- Sequences `04-generation-orchestration.md` ahead of `07-credits-and-billing.md`
+- Leaves `11-growth-and-collaboration.md` for a later phase once the core loop is stable

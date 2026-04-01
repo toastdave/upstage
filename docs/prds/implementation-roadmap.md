@@ -30,6 +30,22 @@ Current status:
 - Remaining work is focused on AI-assisted room analysis, richer output handling, provider reliability, and comparison UX.
 - The next major slice should center on room-analysis-to-JSON, stronger prompt compilation, and higher-confidence output review.
 
+Recommended next-build order:
+
+1. Ship AI room analysis with an editable room brief review step.
+2. Turn job history into a proper gallery with before-and-after review, favorites, and downloads.
+3. Harden orchestration with async processing, retries, and true idempotency.
+4. Launch credits and billing enforcement before broader rollout.
+5. Polish upload, mobile capture, and account surfaces after the core loop is durable.
+
+Default product decisions for the next slice:
+
+- Run room analysis automatically after the first successful source-photo upload, with an explicit re-analyze action.
+- Review the room brief in structured UI sections backed by typed JSON rather than a raw JSON editor.
+- Keep single-output generation acceptable for the first room-analysis slice; add richer variant flows after gallery UX lands.
+- Treat Gemini as the hosted production-default provider while keeping Ollama as the local development route.
+- Deduct or reserve credits when a job is accepted, then restore them with compensating ledger entries if the run fails before a usable result is saved.
+
 ## Phase 4 - Monetization And Safety
 
 - Launch credits, plan entitlements, Polar checkout, and billing webhooks.
