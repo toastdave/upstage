@@ -209,6 +209,11 @@ async function signOut() {
 
 			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur">
 				<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Account</p>
+				{#if data.billingNotice}
+					<p class={`mt-5 rounded-2xl border px-4 py-3 text-sm ${data.billingNotice.tone === 'success' ? 'border-moss-500/20 bg-moss-500/10 text-moss-500' : data.billingNotice.tone === 'error' ? 'border-terracotta-500/20 bg-terracotta-500/10 text-terracotta-500' : 'border-ink-950/10 bg-paper-100/80 text-ink-700'}`}>
+						{data.billingNotice.message}
+					</p>
+				{/if}
 				<div class="mt-5 space-y-4 text-sm text-ink-700">
 					<div>
 						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Signed in as</p>
@@ -225,11 +230,29 @@ async function signOut() {
 						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Current plan</p>
 						<p class="mt-2 font-semibold text-ink-950">{data.billing.currentPlan.name}</p>
 						<p class="mt-1 leading-7">Includes {data.billing.currentPlan.includedCredits} starter credits in the current seeded billing model.</p>
+						<p class="mt-2 text-xs uppercase tracking-[0.22em] text-ink-700/70">{data.billing.polar.environmentLabel}</p>
+						<div class="mt-4 flex flex-wrap gap-3" id="billing">
+							{#if data.billing.polar.checkoutReady}
+								<a class="rounded-full bg-ink-950 px-4 py-2 text-sm font-semibold text-paper-100" href="/account/billing/checkout">
+									Start sandbox checkout
+								</a>
+							{:else}
+								<p class="rounded-full border border-terracotta-500/15 bg-terracotta-500/8 px-4 py-2 text-sm text-terracotta-500">
+									Add `POLAR_ACCESS_TOKEN` and `POLAR_PRO_PRODUCT_ID` to enable checkout.
+								</p>
+							{/if}
+
+							{#if data.billing.polar.customerPortalReady}
+								<a class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm font-semibold text-ink-900" href="/account/billing/portal">
+									Open customer portal
+								</a>
+							{/if}
+						</div>
 					</div>
 
 					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
 						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Next milestone</p>
-						<p class="mt-2 leading-7">Billing guardrails now block insufficient-balance generations. Checkout, portal access, and webhook-backed top-ups are the next layer.</p>
+						<p class="mt-2 leading-7">Polar sandbox checkout, portal handoff, and webhook ingestion are now wired. Add your sandbox keys and product ID, then validate the hosted flow end to end.</p>
 					</div>
 
 					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
@@ -237,6 +260,9 @@ async function signOut() {
 							<div>
 								<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Recent credit activity</p>
 								<p class="mt-2 font-semibold text-ink-950">Balance {data.billing.creditBalance} credits</p>
+								<p class="mt-1 text-sm leading-7 text-ink-700">
+									Polar state: {data.billing.polar.state.replaceAll('_', ' ')}
+								</p>
 							</div>
 						</div>
 

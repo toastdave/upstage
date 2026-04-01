@@ -125,7 +125,8 @@ Current status:
 
 - Initial enforcement is shipped. Users now receive the seeded free plan and starter credits automatically, project pages show live credit balance, and the server blocks insufficient-balance generations before provider execution starts.
 - Generation acceptance now records signed ledger entries, and failed jobs create compensating refund entries so balance changes remain traceable from the workspace.
-- The remaining work in this tranche is checkout, webhook-backed fulfillment, portal access, and richer billing/account surfaces.
+- Polar sandbox checkout and portal handoff routes are now wired, and webhook intake is in place so the hosted billing flow can be tested end to end once sandbox keys are added.
+- The remaining work in this tranche is richer pricing/billing UX, deeper webhook fulfillment for renewals and refunds, and production-readiness validation after sandbox testing.
 
 ### 5. Upload and account polish
 

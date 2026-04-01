@@ -41,11 +41,13 @@ Monetize Upstage with prepaid credits and subscription tiers while protecting ma
 - Users now receive the seeded free plan automatically when billing state is first loaded.
 - The app now grants starter credits from the active plan, shows recent ledger activity in the workspace, and exposes live credit balance on project detail pages.
 - Generation acceptance now deducts credits immediately, failed runs issue compensating refunds, and insufficient-balance runs are blocked server-side before execution begins.
+- Account pages now expose Polar sandbox checkout and customer-portal entrypoints, and the repo includes a validated webhook endpoint plus environment scaffolding for sandbox testing.
+- Billing loads now attempt to sync local entitlements from Polar customer state using the Upstage user ID as the external customer identifier.
 
 ## Remaining follow-up
 
-- Build pricing, checkout, and billing-portal entrypoints with Polar.
-- Add webhook ingestion and replay-safe fulfillment for purchases and subscription changes.
+- Build fuller pricing and billing surfaces beyond the current workspace entrypoints.
+- Expand webhook fulfillment from customer-state syncing into richer purchase, renewal, and refund audit handling.
 - Expand ledger visibility into a dedicated billing page with admin-friendly audit traces.
 - Add stronger concurrency protections around balance reservation once generation moves to async workers.
 

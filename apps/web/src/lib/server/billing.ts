@@ -5,6 +5,12 @@ import {
 	getIncludedCreditsFromFeatureFlags,
 } from '$lib/server/billing-helpers'
 import { db } from '$lib/server/db'
+import {
+	type PolarPublicConfig,
+	fetchPolarCustomerState,
+	getPolarPublicConfig,
+} from '$lib/server/polar'
+import { mapPolarCustomerStateToEntitlement } from '$lib/server/polar-helpers'
 import { creditLedger, plan, userEntitlement } from '@upstage/db/schema'
 import { and, desc, eq, sql } from 'drizzle-orm'
 
@@ -16,7 +22,9 @@ export {
 }
 
 type BillingReader = Pick<typeof db, 'select'>
-type BillingWriter = BillingReader & Pick<typeof db, 'insert'>
+type BillingWriter = BillingReader & Pick<typeof db, 'insert' | 'update'>
+
+type PolarBillingState = 'configured' | 'customer_missing' | 'not_configured' | 'sync_error'
 
 export type BillingPlanSnapshot = {
 	id: string
@@ -35,9 +43,21 @@ export type BillingLedgerEntry = {
 	referenceId: string | null
 }
 
+export type PolarBillingSnapshot = {
+	accessTokenConfigured: boolean
+	checkoutReady: boolean
+	customerPortalReady: boolean
+	environmentLabel: string
+	proProductConfigured: boolean
+	server: PolarPublicConfig['server']
+	state: PolarBillingState
+	webhookReady: boolean
+}
+
 export type BillingSnapshot = {
 	creditBalance: number
 	currentPlan: BillingPlanSnapshot
+	polar: PolarBillingSnapshot
 	recentLedger: BillingLedgerEntry[]
 }
 
@@ -89,6 +109,19 @@ async function loadFreePlanSnapshot(executor: BillingReader) {
 		name: freePlan.name,
 		slug: freePlan.slug,
 	} satisfies BillingPlanSnapshot
+}
+
+async function loadLatestEntitlementRecord(executor: BillingReader, userId: string) {
+	const [record] = await executor
+		.select({
+			id: userEntitlement.id,
+		})
+		.from(userEntitlement)
+		.where(eq(userEntitlement.userId, userId))
+		.orderBy(desc(userEntitlement.startsAt), desc(userEntitlement.createdAt))
+		.limit(1)
+
+	return record ?? null
 }
 
 export async function getCreditBalance(executor: BillingReader, userId: string) {
@@ -146,7 +179,75 @@ export async function ensureUserBillingState(executor: BillingWriter, userId: st
 	return currentPlan
 }
 
+export async function syncUserBillingStateWithPolar(userId: string) {
+	const polarConfig = getPolarPublicConfig()
+
+	if (!polarConfig.accessTokenConfigured) {
+		return {
+			customerPortalReady: false,
+			state: 'not_configured' as const,
+		}
+	}
+
+	try {
+		const customerState = await fetchPolarCustomerState(userId)
+
+		if (!customerState) {
+			return {
+				customerPortalReady: false,
+				state: 'customer_missing' as const,
+			}
+		}
+
+		const nextEntitlement = mapPolarCustomerStateToEntitlement(
+			customerState,
+			polarConfig.proProductId
+		)
+
+		await db.transaction(async (tx) => {
+			await ensureUserBillingState(tx, userId)
+			const latestEntitlement = await loadLatestEntitlementRecord(tx, userId)
+
+			if (latestEntitlement) {
+				await tx
+					.update(userEntitlement)
+					.set({
+						planId: nextEntitlement.planId,
+						polarCustomerId: nextEntitlement.polarCustomerId,
+						polarSubscriptionId: nextEntitlement.polarSubscriptionId,
+						status: nextEntitlement.status,
+						updatedAt: new Date(),
+					})
+					.where(eq(userEntitlement.id, latestEntitlement.id))
+			} else {
+				await tx.insert(userEntitlement).values({
+					planId: nextEntitlement.planId,
+					polarCustomerId: nextEntitlement.polarCustomerId,
+					polarSubscriptionId: nextEntitlement.polarSubscriptionId,
+					status: nextEntitlement.status,
+					userId,
+				})
+			}
+
+			await ensureUserBillingState(tx, userId)
+		})
+
+		return {
+			customerPortalReady: true,
+			state: 'configured' as const,
+		}
+	} catch {
+		return {
+			customerPortalReady: false,
+			state: 'sync_error' as const,
+		}
+	}
+}
+
 export async function loadUserBillingSnapshot(userId: string): Promise<BillingSnapshot> {
+	const polarConfig = getPolarPublicConfig()
+	const polarState = await syncUserBillingStateWithPolar(userId)
+
 	return db.transaction(async (tx) => {
 		const currentPlan = await ensureUserBillingState(tx, userId)
 		const creditBalance = await getCreditBalance(tx, userId)
@@ -168,6 +269,16 @@ export async function loadUserBillingSnapshot(userId: string): Promise<BillingSn
 		return {
 			creditBalance,
 			currentPlan,
+			polar: {
+				accessTokenConfigured: polarConfig.accessTokenConfigured,
+				checkoutReady: polarConfig.checkoutReady,
+				customerPortalReady: polarState.customerPortalReady,
+				environmentLabel: polarConfig.environmentLabel,
+				proProductConfigured: polarConfig.proProductConfigured,
+				server: polarConfig.server,
+				state: polarState.state,
+				webhookReady: polarConfig.webhookReady,
+			},
 			recentLedger,
 		}
 	})

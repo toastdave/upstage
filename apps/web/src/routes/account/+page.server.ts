@@ -6,7 +6,42 @@ import { project, sourceAsset } from '@upstage/db/schema'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import type { Actions, PageServerLoad } from './$types'
 
-export const load: PageServerLoad = async ({ locals }) => {
+function getBillingNotice(url: URL) {
+	switch (url.searchParams.get('billing')) {
+		case 'checkout-success':
+			return {
+				message:
+					'Polar checkout returned successfully. Refreshing your billing state from the sandbox environment.',
+				tone: 'success' as const,
+			}
+		case 'checkout-cancelled':
+			return {
+				message: 'Polar checkout was canceled before payment completed.',
+				tone: 'neutral' as const,
+			}
+		case 'checkout-error':
+			return {
+				message:
+					'We could not start the Polar checkout yet. Confirm the sandbox product ID and access token are configured.',
+				tone: 'error' as const,
+			}
+		case 'portal-error':
+			return {
+				message:
+					'We could not open the Polar customer portal for this account yet. Complete a checkout first or confirm the sandbox customer exists.',
+				tone: 'error' as const,
+			}
+		case 'portal-returned':
+			return {
+				message: 'Returned from the Polar customer portal.',
+				tone: 'neutral' as const,
+			}
+		default:
+			return null
+	}
+}
+
+export const load: PageServerLoad = async ({ locals, url }) => {
 	if (!locals.user || !locals.session) {
 		throw redirect(303, '/auth/sign-in?redirectTo=/account')
 	}
@@ -40,6 +75,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 
 	return {
 		billing,
+		billingNotice: getBillingNotice(url),
 		creditBalance: billing.creditBalance,
 		projectCount: projects.length,
 		projects,

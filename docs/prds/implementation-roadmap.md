@@ -60,7 +60,8 @@ Current status:
 
 - Seeded plans now back real starter-credit grants, workspace pages show recent credit ledger activity, and project detail pages show live available balance.
 - Generation acceptance now enforces insufficient-balance checks server-side, deducts credits when a run is accepted, and issues compensating refunds when execution fails.
-- Remaining work is focused on Polar checkout and portal flows, webhook-backed fulfillment, and fuller billing/admin surfaces.
+- Polar sandbox checkout and customer-portal routes are now wired into the workspace, and webhook intake is in place for sandbox validation.
+- Remaining work is focused on richer billing surfaces, deeper webhook fulfillment for renewals and refunds, and full sandbox-to-production rollout validation.
 
 ## Phase 5 - Polish And Growth
 

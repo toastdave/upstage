@@ -201,6 +201,13 @@ Use the full `https://` URL. This setup serves HTTPS on port `1201`; `http://` r
 - `POLAR_ACCESS_TOKEN` is used for Polar API access.
 - `POLAR_WEBHOOK_SECRET` validates webhook deliveries.
 - `POLAR_SERVER` should stay on `sandbox` until the full billing flow is verified end-to-end.
+- `POLAR_PRO_PRODUCT_ID` should point at the Pro subscription product in your Polar sandbox organization.
+
+Sandbox routes wired in the app:
+
+- Checkout handoff: `/account/billing/checkout`
+- Customer portal handoff: `/account/billing/portal`
+- Webhook endpoint: `/api/webhooks/polar`
 
 ## Billing environments
 
@@ -213,6 +220,8 @@ Sandbox notes:
 - Polar sandbox is a separate environment, not a test-mode toggle on production data.
 - Sandbox needs its own account, organization, and tokens.
 - Stripe test cards work in Polar sandbox, for example `4242 4242 4242 4242` with a future expiry and any CVC.
+- Configure the webhook endpoint in Polar to hit `https://<your-host>/api/webhooks/polar` using your sandbox webhook secret.
+- The app uses the Upstage user ID as Polar `external_customer_id`, so checkout, portal, and customer-state sync all stay tied to the same local account.
 
 ## Core commands
 

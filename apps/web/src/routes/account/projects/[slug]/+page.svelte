@@ -477,6 +477,9 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 					{#if !hasEnoughCredits}
 						<p class="rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
 							This run needs {estimatedCredits} credits, but only {data.billing.creditBalance} are available right now.
+							{#if data.billing.polar.checkoutReady}
+								<a class="ml-2 underline underline-offset-4" href="/account/billing/checkout">Top up in {data.billing.polar.environmentLabel.toLowerCase()}</a>
+							{/if}
 						</p>
 					{/if}
 

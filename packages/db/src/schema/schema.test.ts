@@ -1,5 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-import { creditLedger, generationImage, generationJob, project, sourceAsset } from './index'
+import {
+	billingEvent,
+	creditLedger,
+	generationImage,
+	generationJob,
+	project,
+	sourceAsset,
+} from './index'
 
 describe('database schema', () => {
 	test('project table exposes expected columns', () => {
@@ -20,5 +27,9 @@ describe('database schema', () => {
 
 	test('credit ledger stores signed entries', () => {
 		expect(creditLedger.amount.name).toBe('amount')
+	})
+
+	test('billing events store provider replay identifiers', () => {
+		expect(billingEvent.providerEventId.name).toBe('provider_event_id')
 	})
 })
