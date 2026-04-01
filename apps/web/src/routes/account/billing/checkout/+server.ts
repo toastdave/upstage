@@ -2,8 +2,14 @@ import { createPolarCheckoutSession } from '$lib/server/polar'
 import { redirect } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 
+function getReturnTo(url: URL) {
+	const returnTo = url.searchParams.get('returnTo')
+
+	return returnTo?.startsWith('/account') ? returnTo : '/account'
+}
+
 function buildAccountRedirect(url: URL, billingStatus: string) {
-	const destination = new URL('/account', url)
+	const destination = new URL(getReturnTo(url), url)
 	destination.searchParams.set('billing', billingStatus)
 
 	return destination.toString()

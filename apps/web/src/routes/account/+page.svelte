@@ -232,6 +232,9 @@ async function signOut() {
 						<p class="mt-1 leading-7">Includes {data.billing.currentPlan.includedCredits} starter credits in the current seeded billing model.</p>
 						<p class="mt-2 text-xs uppercase tracking-[0.22em] text-ink-700/70">{data.billing.polar.environmentLabel}</p>
 						<div class="mt-4 flex flex-wrap gap-3" id="billing">
+							<a class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm font-semibold text-ink-900" href="/account/billing">
+								Open billing
+							</a>
 							{#if data.billing.polar.checkoutReady}
 								<a class="rounded-full bg-ink-950 px-4 py-2 text-sm font-semibold text-paper-100" href="/account/billing/checkout">
 									Start sandbox checkout

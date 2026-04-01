@@ -32,16 +32,19 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		const [existingEvent] = await db
-			.select({ id: billingEvent.id })
+			.select({ id: billingEvent.id, processedAt: billingEvent.processedAt })
 			.from(billingEvent)
 			.where(eq(billingEvent.providerEventId, providerEventId))
 			.limit(1)
+
+		if (existingEvent?.processedAt) {
+			return new Response('', { status: 202 })
+		}
 
 		if (!existingEvent) {
 			await db.insert(billingEvent).values({
 				eventName,
 				payload,
-				processedAt: new Date(),
 				providerEventId,
 			})
 		}
@@ -51,6 +54,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		if (upstageUserId) {
 			await syncUserBillingStateWithPolar(upstageUserId)
 		}
+
+		await db
+			.update(billingEvent)
+			.set({ processedAt: new Date() })
+			.where(eq(billingEvent.providerEventId, providerEventId))
 
 		return new Response('', { status: 202 })
 	} catch (error) {

@@ -10,8 +10,11 @@ import {
 	fetchPolarCustomerState,
 	getPolarPublicConfig,
 } from '$lib/server/polar'
-import { mapPolarCustomerStateToEntitlement } from '$lib/server/polar-helpers'
-import { creditLedger, plan, userEntitlement } from '@upstage/db/schema'
+import {
+	extractUpstageUserIdFromPolarPayload,
+	mapPolarCustomerStateToEntitlement,
+} from '$lib/server/polar-helpers'
+import { billingEvent, creditLedger, plan, userEntitlement } from '@upstage/db/schema'
 import { and, desc, eq, sql } from 'drizzle-orm'
 
 export {
@@ -59,6 +62,14 @@ export type BillingSnapshot = {
 	currentPlan: BillingPlanSnapshot
 	polar: PolarBillingSnapshot
 	recentLedger: BillingLedgerEntry[]
+}
+
+export type BillingEventSnapshot = {
+	createdAt: Date
+	eventName: string
+	id: string
+	processedAt: Date | null
+	providerEventId: string
 }
 
 async function loadPlanSnapshot(executor: BillingReader, userId: string) {
@@ -244,7 +255,37 @@ export async function syncUserBillingStateWithPolar(userId: string) {
 	}
 }
 
-export async function loadUserBillingSnapshot(userId: string): Promise<BillingSnapshot> {
+export async function loadRecentBillingEventsForUser(userId: string, limit = 10) {
+	const recentEvents = await db
+		.select({
+			createdAt: billingEvent.createdAt,
+			eventName: billingEvent.eventName,
+			id: billingEvent.id,
+			payload: billingEvent.payload,
+			processedAt: billingEvent.processedAt,
+			providerEventId: billingEvent.providerEventId,
+		})
+		.from(billingEvent)
+		.orderBy(desc(billingEvent.createdAt))
+		.limit(Math.max(limit * 6, 30))
+
+	return recentEvents
+		.filter((event) => extractUpstageUserIdFromPolarPayload(event.payload) === userId)
+		.slice(0, limit)
+		.map((event) => ({
+			createdAt: event.createdAt,
+			eventName: event.eventName,
+			id: event.id,
+			processedAt: event.processedAt,
+			providerEventId: event.providerEventId,
+		})) satisfies BillingEventSnapshot[]
+}
+
+export async function loadUserBillingSnapshot(
+	userId: string,
+	options?: { ledgerLimit?: number }
+): Promise<BillingSnapshot> {
+	const ledgerLimit = options?.ledgerLimit ?? 5
 	const polarConfig = getPolarPublicConfig()
 	const polarState = await syncUserBillingStateWithPolar(userId)
 
@@ -264,7 +305,7 @@ export async function loadUserBillingSnapshot(userId: string): Promise<BillingSn
 			.from(creditLedger)
 			.where(eq(creditLedger.userId, userId))
 			.orderBy(desc(creditLedger.createdAt))
-			.limit(5)
+			.limit(ledgerLimit)
 
 		return {
 			creditBalance,

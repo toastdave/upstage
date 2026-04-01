@@ -37,6 +37,7 @@ Ensure the MVP can be operated, debugged, and improved after launch without gues
 
 - Generation jobs now persist provider route, request metadata, response metadata, and failure messages.
 - Local infrastructure and README guidance already document Ollama setup and route selection.
+- Billing webhook intake now persists provider event identifiers plus pending-versus-processed state, and the billing page exposes recent user-scoped Polar events for sandbox validation.
 
 ## Remaining follow-up
 
