@@ -1,11 +1,14 @@
 import { aspectRatioOptions } from '$lib/generation'
 import { formatProjectType } from '$lib/projects'
+import { buildFallbackRoomBrief, buildRoomBriefSummary, normalizeRoomBrief } from '$lib/room-briefs'
 import { db } from '$lib/server/db'
 import { executeProjectGeneration, loadProjectGenerationState } from '$lib/server/generation-jobs'
 import { normalizeOptionalText } from '$lib/server/projects'
+import { buildDraftRoomBrief } from '$lib/server/room-analysis'
 import {
 	buildSourceAssetStorageKey,
 	buildStoredMediaUrl,
+	getStoredObject,
 	uploadSourceAssetObject,
 } from '$lib/server/storage'
 import {
@@ -59,6 +62,16 @@ async function saveSourceAsset(options: {
 }) {
 	const storageKey = buildSourceAssetStorageKey(options.projectRecord.slug, options.file.name)
 	const body = new Uint8Array(await options.file.arrayBuffer())
+	const draftRoomBrief = await buildDraftRoomBrief({
+		project: options.projectRecord,
+		sourceAsset: {
+			height: options.height,
+			mimeType: options.file.type,
+			originalFilename: options.file.name,
+			width: options.width,
+		},
+		sourceImage: body,
+	})
 
 	await uploadSourceAssetObject({
 		body,
@@ -91,7 +104,30 @@ async function saveSourceAsset(options: {
 		fileSizeBytes: options.file.size,
 		width: options.width,
 		height: options.height,
+		roomBrief: draftRoomBrief.brief,
+		roomBriefStatus: 'draft',
+		roomBriefSummary: draftRoomBrief.summary,
+		roomBriefGeneratedAt: new Date(),
 	})
+}
+
+function decorateAssetWithRoomBrief(
+	projectRecord: typeof project.$inferSelect,
+	asset: typeof sourceAsset.$inferSelect
+) {
+	const fallbackRoomBrief = buildFallbackRoomBrief({
+		project: projectRecord,
+		sourceAsset: {
+			originalFilename: asset.originalFilename,
+		},
+	})
+	const roomBrief = normalizeRoomBrief(asset.roomBrief, fallbackRoomBrief)
+
+	return {
+		...asset,
+		roomBrief,
+		roomBriefSummary: asset.roomBriefSummary ?? buildRoomBriefSummary(roomBrief),
+	}
 }
 
 export const load: PageServerLoad = async ({ locals, params }) => {
@@ -106,10 +142,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		.where(eq(sourceAsset.projectId, projectRecord.id))
 		.orderBy(desc(sourceAsset.createdAt))
 	const generationState = await loadProjectGenerationState(projectRecord.id)
+	const decoratedAssets = assets.map((asset) => decorateAssetWithRoomBrief(projectRecord, asset))
 
 	return {
-		activeAssets: assets.filter((item) => item.archivedAt === null),
-		archivedAssets: assets.filter((item) => item.archivedAt !== null),
+		activeAssets: decoratedAssets.filter((item) => item.archivedAt === null),
+		archivedAssets: decoratedAssets.filter((item) => item.archivedAt !== null),
 		generationState,
 		project: {
 			...projectRecord,
@@ -147,7 +184,7 @@ export const actions: Actions = {
 
 		return {
 			form: 'uploadAsset',
-			message: 'Source photo uploaded. You can add more rooms or move into generation next.',
+			message: 'Source photo uploaded and a draft room brief is ready for review.',
 		}
 	},
 
@@ -191,7 +228,7 @@ export const actions: Actions = {
 
 		return {
 			form: 'replaceAsset',
-			message: 'Source photo replaced. The previous version moved into the archived list.',
+			message: 'Source photo replaced and a fresh draft room brief is ready to review.',
 		}
 	},
 
@@ -248,13 +285,11 @@ export const actions: Actions = {
 			formData.get('additionalInstructions'),
 			1200
 		)
-		const protectedElements = normalizeOptionalText(formData.get('protectedElements'), 600)
 
 		const values = {
 			additionalInstructions: additionalInstructions ?? '',
 			aspectRatio,
 			presetId,
-			protectedElements: protectedElements ?? '',
 			sourceAssetId,
 		}
 
@@ -288,7 +323,6 @@ export const actions: Actions = {
 				aspectRatio,
 				presetId,
 				projectSlug: params.slug,
-				protectedElements,
 				sourceAssetId,
 				userId: locals.user.id,
 			})
@@ -307,6 +341,138 @@ export const actions: Actions = {
 				form: 'generateConcept',
 				values,
 			})
+		}
+	},
+
+	saveRoomBrief: async ({ locals, params, request }) => {
+		if (!locals.user) {
+			throw redirect(303, `/auth/sign-in?redirectTo=/account/projects/${params.slug}`)
+		}
+
+		const projectRecord = await getOwnedProject(params.slug, locals.user.id)
+		const formData = await request.formData()
+		const sourceAssetEntry = formData.get('sourceAssetId')
+		const sourceAssetId = typeof sourceAssetEntry === 'string' ? sourceAssetEntry : ''
+		const targetAsset = await getReplaceableAsset(sourceAssetId, projectRecord.id, locals.user.id)
+
+		if (!targetAsset) {
+			return fail(404, {
+				error: 'Choose an active source photo before saving the room brief.',
+				form: 'saveRoomBrief',
+				values: { sourceAssetId },
+			})
+		}
+
+		const fallbackRoomBrief = buildFallbackRoomBrief({
+			project: projectRecord,
+			sourceAsset: {
+				originalFilename: targetAsset.originalFilename,
+			},
+		})
+		const roomBrief = normalizeRoomBrief(
+			{
+				architecturalAnchors:
+					normalizeOptionalText(formData.get('architecturalAnchors'), 400) ?? '',
+				existingFurniture: normalizeOptionalText(formData.get('existingFurniture'), 400) ?? '',
+				lightingConditions: normalizeOptionalText(formData.get('lightingConditions'), 400) ?? '',
+				notes: normalizeOptionalText(formData.get('notes'), 600) ?? '',
+				propertyType: normalizeOptionalText(formData.get('propertyType'), 80) ?? '',
+				protectedElements: normalizeOptionalText(formData.get('protectedElements'), 400) ?? '',
+				realismGuidance: normalizeOptionalText(formData.get('realismGuidance'), 400) ?? '',
+				requestedChanges: normalizeOptionalText(formData.get('requestedChanges'), 600) ?? '',
+				roomType: normalizeOptionalText(formData.get('roomType'), 80) ?? '',
+				styleDirection: normalizeOptionalText(formData.get('styleDirection'), 200) ?? '',
+			},
+			fallbackRoomBrief
+		)
+
+		await db
+			.update(sourceAsset)
+			.set({
+				roomBrief,
+				roomBriefReviewedAt: new Date(),
+				roomBriefStatus: 'reviewed',
+				roomBriefSummary: buildRoomBriefSummary(roomBrief),
+			})
+			.where(
+				and(
+					eq(sourceAsset.id, targetAsset.id),
+					eq(sourceAsset.projectId, projectRecord.id),
+					eq(sourceAsset.ownerUserId, locals.user.id),
+					isNull(sourceAsset.archivedAt)
+				)
+			)
+
+		return {
+			form: 'saveRoomBrief',
+			message: 'Room brief saved. Generation will now use this reviewed version.',
+			values: { sourceAssetId },
+		}
+	},
+
+	reanalyzeRoomBrief: async ({ locals, params, request }) => {
+		if (!locals.user) {
+			throw redirect(303, `/auth/sign-in?redirectTo=/account/projects/${params.slug}`)
+		}
+
+		const projectRecord = await getOwnedProject(params.slug, locals.user.id)
+		const formData = await request.formData()
+		const sourceAssetEntry = formData.get('sourceAssetId')
+		const sourceAssetId = typeof sourceAssetEntry === 'string' ? sourceAssetEntry : ''
+		const targetAsset = await getReplaceableAsset(sourceAssetId, projectRecord.id, locals.user.id)
+
+		if (!targetAsset) {
+			return fail(404, {
+				error: 'Choose an active source photo before re-running room analysis.',
+				form: 'reanalyzeRoomBrief',
+				values: { sourceAssetId },
+			})
+		}
+
+		const storedObject = await getStoredObject(targetAsset.storageKey)
+
+		if (!storedObject.Body) {
+			return fail(400, {
+				error: 'The source photo is missing from storage, so room analysis could not run.',
+				form: 'reanalyzeRoomBrief',
+				values: { sourceAssetId },
+			})
+		}
+
+		const sourceImage = new Uint8Array(await storedObject.Body.transformToByteArray())
+		const draftRoomBrief = await buildDraftRoomBrief({
+			project: projectRecord,
+			sourceAsset: {
+				height: targetAsset.height,
+				mimeType: targetAsset.mimeType,
+				originalFilename: targetAsset.originalFilename,
+				width: targetAsset.width,
+			},
+			sourceImage,
+		})
+
+		await db
+			.update(sourceAsset)
+			.set({
+				roomBrief: draftRoomBrief.brief,
+				roomBriefGeneratedAt: new Date(),
+				roomBriefReviewedAt: null,
+				roomBriefStatus: 'draft',
+				roomBriefSummary: draftRoomBrief.summary,
+			})
+			.where(
+				and(
+					eq(sourceAsset.id, targetAsset.id),
+					eq(sourceAsset.projectId, projectRecord.id),
+					eq(sourceAsset.ownerUserId, locals.user.id),
+					isNull(sourceAsset.archivedAt)
+				)
+			)
+
+		return {
+			form: 'reanalyzeRoomBrief',
+			message: 'Room analysis reran and refreshed the draft brief for this photo.',
+			values: { sourceAssetId },
 		}
 	},
 }

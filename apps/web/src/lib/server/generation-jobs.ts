@@ -105,7 +105,6 @@ export async function executeProjectGeneration(options: {
 	aspectRatio: string
 	presetId: string
 	projectSlug: string
-	protectedElements: string | null
 	sourceAssetId: string
 	userId: string
 }) {
@@ -151,7 +150,8 @@ export async function executeProjectGeneration(options: {
 		aspectRatio: options.aspectRatio,
 		preset: presetRecord,
 		project: projectRecord,
-		protectedElements: options.protectedElements,
+		roomBrief: sourceAssetRecord.roomBrief,
+		roomBriefStatus: sourceAssetRecord.roomBriefStatus,
 		sourceAsset: sourceAssetRecord,
 	})
 
@@ -200,7 +200,10 @@ export async function executeProjectGeneration(options: {
 			jobId: createdJob.id,
 			presetName: presetRecord.name,
 			projectSlug: projectRecord.slug,
-			protectedElements: options.protectedElements,
+			protectedElements:
+				typeof generationPlan.roomBrief.protectedElements === 'string'
+					? generationPlan.roomBrief.protectedElements
+					: null,
 			requestedCount: 1,
 			sourceImage: {
 				data: sourceBuffer,

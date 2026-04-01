@@ -11,6 +11,8 @@ describe('database schema', () => {
 		expect(generationJob.sourceAssetId.name).toBe('source_asset_id')
 		expect(generationJob.idempotencyKey.name).toBe('idempotency_key')
 		expect(sourceAsset.storageKey.name).toBe('storage_key')
+		expect(sourceAsset.roomBrief.name).toBe('room_brief')
+		expect(sourceAsset.roomBriefStatus.name).toBe('room_brief_status')
 		expect(sourceAsset.archivedAt.name).toBe('archived_at')
 		expect(generationImage.mimeType.name).toBe('mime_type')
 	})

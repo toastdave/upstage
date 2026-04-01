@@ -27,6 +27,7 @@ Current status:
 Current status:
 
 - Initial generation setup, room brief compilation, provider routing, and job history are in place.
+- Source-photo uploads now create a draft room brief automatically, project pages expose a structured review step, and reviewed briefs feed the generation planner.
 - Remaining work is focused on AI-assisted room analysis, richer output handling, provider reliability, and comparison UX.
 - The next major slice should center on room-analysis-to-JSON, stronger prompt compilation, and higher-confidence output review.
 

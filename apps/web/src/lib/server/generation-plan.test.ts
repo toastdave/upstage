@@ -21,7 +21,20 @@ describe('buildGenerationPlan', () => {
 				styleIntent: 'Warm minimal',
 				title: 'Mockingbird listing',
 			},
-			protectedElements: 'Balcony doors, wall trim',
+			roomBrief: {
+				architecturalAnchors: 'Balcony doors, wall trim, window wall',
+				existingFurniture:
+					'Treat the room as empty except for built-in shelving and lighting fixtures.',
+				lightingConditions: 'Preserve the soft afternoon light from the balcony doors.',
+				notes: 'Keep the balcony doors visible',
+				propertyType: 'Condo',
+				protectedElements: 'Balcony doors, wall trim',
+				realismGuidance: 'Keep the result photorealistic and listing friendly.',
+				requestedChanges: 'Add warm oak furniture and keep the room airy.',
+				roomType: 'Living room',
+				styleDirection: 'Warm minimal',
+			},
+			roomBriefStatus: 'reviewed',
 			sourceAsset: {
 				fileSizeBytes: 1024,
 				height: 900,
@@ -34,7 +47,9 @@ describe('buildGenerationPlan', () => {
 
 		expect(plan.compiledPrompt).toContain('Structured room brief JSON')
 		expect(plan.compiledPrompt).toContain('Balcony doors, wall trim')
+		expect(plan.compiledPrompt).toContain('Warm minimal')
 		expect(plan.roomBrief.targetAspectRatio).toBe('4:3')
+		expect(plan.roomBrief.analysisStatus).toBe('reviewed')
 		expect(plan.creditEstimate).toBe(7)
 	})
 })

@@ -1,21 +1,38 @@
 <script lang="ts">
 import { aspectRatioOptions, estimateGenerationCredits, formatAspectRatio } from '$lib/generation'
 import { formatBytes } from '$lib/projects'
+import {
+	type RoomBriefFieldDefinition,
+	emptyRoomBrief,
+	getRoomBriefFieldState,
+	roomBriefFieldDefinitions,
+} from '$lib/room-briefs'
 import type { ActionData, PageData } from './$types'
 
 const { data, form } = $props<{ data: PageData; form?: ActionData }>()
 
+type ActionValues = {
+	additionalInstructions?: string
+	aspectRatio?: string
+	presetId?: string
+	sourceAssetId?: string
+}
+
+type ProjectAsset = PageData['activeAssets'][number]
+type MatchingPreset = PageData['generationState']['presets'][number]
+type RoomBriefField = RoomBriefFieldDefinition
+
+const actionValues = $derived(((form ?? {}) as { values?: ActionValues }).values)
+
 const uploadDimensions = $state<Record<string, { height: string; width: string }>>({})
-let selectedAspectRatio = $state('4:3')
+let selectedAspectRatio = $state('')
 let selectedPresetId = $state('')
 let selectedSourceAssetId = $state('')
-let protectedElements = $state('')
 let additionalInstructions = $state('')
 
 const matchingPresets = $derived(
 	data.generationState.presets.filter(
-		(preset: (typeof data.generationState.presets)[number]) =>
-			preset.category === data.project.projectType
+		(preset: MatchingPreset) => preset.category === data.project.projectType
 	)
 )
 const runtimeCapability = $derived(
@@ -24,23 +41,46 @@ const runtimeCapability = $derived(
 			capability.route === data.generationState.generationRoute
 	)
 )
-const estimatedCredits = $derived(estimateGenerationCredits(selectedAspectRatio))
+const estimatedCredits = $derived(estimateGenerationCredits(selectedAspectRatio || '4:3'))
+const selectedAsset = $derived(
+	data.activeAssets.find((asset: ProjectAsset) => asset.id === selectedSourceAssetId) ??
+		data.activeAssets[0] ??
+		null
+)
+const selectedRoomBrief = $derived(selectedAsset?.roomBrief ?? emptyRoomBrief)
+const selectedRoomBriefStatus = $derived(selectedAsset?.roomBriefStatus ?? 'missing')
+const canGenerate = $derived(data.activeAssets.length > 0 && matchingPresets.length > 0)
 
 $effect(() => {
-	if (form?.form === 'generateConcept' && form.values) {
-		selectedAspectRatio = form.values.aspectRatio || selectedAspectRatio
-		selectedPresetId = form.values.presetId || selectedPresetId
-		selectedSourceAssetId = form.values.sourceAssetId || selectedSourceAssetId
-		protectedElements = form.values.protectedElements || ''
-		additionalInstructions = form.values.additionalInstructions || ''
-		return
+	if (
+		!selectedSourceAssetId ||
+		!data.activeAssets.some((asset: ProjectAsset) => asset.id === selectedSourceAssetId)
+	) {
+		selectedSourceAssetId = data.activeAssets[0]?.id ?? ''
 	}
 
-	selectedAspectRatio = matchingPresets[0]?.defaultAspectRatio ?? '4:3'
-	selectedPresetId = matchingPresets[0]?.id ?? ''
-	selectedSourceAssetId = data.activeAssets[0]?.id ?? ''
-	protectedElements = 'Windows, doors, wall trim, layout, and permanent architectural features'
-	additionalInstructions = ''
+	if (
+		!selectedPresetId ||
+		!matchingPresets.some((preset: MatchingPreset) => preset.id === selectedPresetId)
+	) {
+		selectedPresetId = matchingPresets[0]?.id ?? ''
+	}
+
+	if (!aspectRatioOptions.some((option) => option.value === selectedAspectRatio)) {
+		selectedAspectRatio = matchingPresets[0]?.defaultAspectRatio ?? '4:3'
+	}
+})
+
+$effect(() => {
+	if (actionValues?.sourceAssetId) {
+		selectedSourceAssetId = actionValues.sourceAssetId
+	}
+
+	if (form?.form === 'generateConcept' && actionValues) {
+		selectedAspectRatio = actionValues.aspectRatio || selectedAspectRatio
+		selectedPresetId = actionValues.presetId || selectedPresetId
+		additionalInstructions = actionValues.additionalInstructions || ''
+	}
 })
 
 async function handleFileChange(event: Event, key: string) {
@@ -77,6 +117,21 @@ async function handleFileChange(event: Event, key: string) {
 		URL.revokeObjectURL(objectUrl)
 	}
 }
+
+function getRoomBriefMaxLength(field: RoomBriefField) {
+	switch (field.key) {
+		case 'roomType':
+		case 'propertyType':
+			return 80
+		case 'styleDirection':
+			return 200
+		case 'notes':
+		case 'requestedChanges':
+			return 600
+		default:
+			return 400
+	}
+}
 </script>
 
 <svelte:head>
@@ -85,13 +140,13 @@ async function handleFileChange(event: Event, key: string) {
 
 <section class="mx-auto max-w-6xl px-6 py-10 sm:px-8 lg:px-10">
 	<div class="flex flex-wrap items-center gap-3 text-sm text-ink-700">
-		<a class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 font-semibold text-ink-900" href="/account">
+		<button class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 font-semibold text-ink-900" type="button" onclick={() => window.location.assign('/account')}>
 			Back to workspace
-		</a>
-		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 uppercase tracking-[0.24em] text-xs">
+		</button>
+		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.24em]">
 			{data.project.projectTypeLabel}
 		</span>
-		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 uppercase tracking-[0.24em] text-xs">
+		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.24em]">
 			{runtimeCapability?.label ?? data.generationState.generationRoute}
 		</span>
 	</div>
@@ -102,7 +157,7 @@ async function handleFileChange(event: Event, key: string) {
 				<p class="font-display text-sm uppercase tracking-[0.3em] text-moss-500">Project detail</p>
 				<h1 class="mt-4 font-display text-4xl leading-none text-ink-950 sm:text-5xl">{data.project.title}</h1>
 				<p class="mt-4 max-w-2xl text-base leading-8 text-ink-700">
-					Upload the clearest room photo you have, then turn it into a structured generation brief with presets, constraints, and provider-aware execution.
+					Upload the clearest room photo you have, review the draft room brief, then generate a provider-aware concept from a cleaner plan.
 				</p>
 
 				<div class="mt-8 flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-ink-700/80">
@@ -160,11 +215,101 @@ async function handleFileChange(event: Event, key: string) {
 				{/if}
 			</div>
 
+			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur" id="room-brief-form">
+				<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Room brief review</p>
+				<h2 class="mt-3 font-display text-3xl text-ink-950">Confirm the draft before generation</h2>
+				<p class="mt-3 text-sm leading-7 text-ink-700">
+					The first upload now prepares a draft room brief automatically. Review the inferred fields, keep the locked architecture constraints, and save the confirmed version you want generation to use.
+				</p>
+
+				{#if data.activeAssets.length === 0}
+					<div class="mt-6 rounded-[1.75rem] border border-dashed border-ink-950/15 bg-paper-100/75 p-6 text-sm leading-7 text-ink-700">
+						Upload a source photo first so Upstage can prepare a draft room brief.
+					</div>
+				{:else}
+					<div class="mt-6 space-y-5">
+						<div class="space-y-2">
+							<label class="text-sm font-medium text-ink-900" for="roomBriefAssetId">Source photo</label>
+							<select bind:value={selectedSourceAssetId} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="roomBriefAssetId" name="roomBriefAssetId">
+							{#each data.activeAssets as asset (asset.id)}
+									<option value={asset.id}>{asset.originalFilename ?? 'Uploaded room photo'}{#if asset.width && asset.height} - {asset.width} x {asset.height}{/if}</option>
+								{/each}
+							</select>
+						</div>
+
+						<div class="rounded-[1.75rem] border border-ink-950/10 bg-paper-100/70 p-5 text-sm leading-7 text-ink-700">
+							<div class="flex flex-wrap items-start justify-between gap-4">
+								<div>
+									<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Current draft</p>
+									<p class="mt-2 text-base text-ink-950">{selectedAsset?.roomBriefSummary}</p>
+								</div>
+								<span class="rounded-full border border-ink-950/10 bg-white px-3 py-1 text-xs uppercase tracking-[0.24em] text-ink-700">
+									{selectedRoomBriefStatus === 'reviewed' ? 'Reviewed' : 'Draft'}
+								</span>
+							</div>
+						</div>
+
+						{#key selectedSourceAssetId}
+							<form class="space-y-5" method="POST" action="?/saveRoomBrief">
+								<input name="sourceAssetId" type="hidden" value={selectedSourceAssetId} />
+
+								<div class="grid gap-4 lg:grid-cols-2">
+									{#each roomBriefFieldDefinitions as field (field.key)}
+										<div class={field.rows > 2 ? 'space-y-2 lg:col-span-2' : 'space-y-2'}>
+											<div class="flex items-center justify-between gap-3">
+												<label class="text-sm font-medium text-ink-900" for={`brief-${field.key}`}>{field.label}</label>
+												<span class="rounded-full border border-ink-950/10 bg-white px-3 py-1 text-[11px] uppercase tracking-[0.24em] text-ink-700">
+													{getRoomBriefFieldState(field.key, selectedRoomBriefStatus)}
+												</span>
+											</div>
+
+											{#if field.rows === 1}
+												<input class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id={`brief-${field.key}`} maxlength={getRoomBriefMaxLength(field)} name={field.key} placeholder={field.placeholder} type="text" value={selectedRoomBrief[field.key]} />
+											{:else}
+												<textarea class="min-h-28 w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id={`brief-${field.key}`} maxlength={getRoomBriefMaxLength(field)} name={field.key} placeholder={field.placeholder} rows={field.rows}>{selectedRoomBrief[field.key]}</textarea>
+											{/if}
+										</div>
+									{/each}
+								</div>
+
+								<div class="flex flex-wrap gap-3">
+									<button class="rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100" type="submit">
+										Save reviewed brief
+									</button>
+								</div>
+							</form>
+						{/key}
+
+						<form method="POST" action="?/reanalyzeRoomBrief">
+							<input name="sourceAssetId" type="hidden" value={selectedSourceAssetId} />
+							<button class="rounded-full border border-ink-950/10 bg-white px-5 py-3 text-sm font-semibold text-ink-900" type="submit">
+								Re-run room analysis
+							</button>
+						</form>
+					</div>
+
+					{#if (form?.form === 'saveRoomBrief' || form?.form === 'reanalyzeRoomBrief') && form.message}
+						<p class="mt-5 rounded-2xl border border-moss-500/20 bg-moss-500/10 px-4 py-3 text-sm text-moss-500">
+							{form.message}
+						</p>
+					{/if}
+
+					{#if (form?.form === 'saveRoomBrief' || form?.form === 'reanalyzeRoomBrief') && form.error}
+						<div class="mt-5 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-4 text-sm text-terracotta-500">
+							<p>{form.error}</p>
+							<a class="mt-3 inline-flex rounded-full border border-terracotta-500/20 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-terracotta-500" href="#room-brief-form">
+								Retry review
+							</a>
+						</div>
+					{/if}
+				{/if}
+			</div>
+
 			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur" id="generation-form">
 				<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Generation setup</p>
-				<h2 class="mt-3 font-display text-3xl text-ink-950">Turn the room into an editable generation plan</h2>
+				<h2 class="mt-3 font-display text-3xl text-ink-950">Generate from the reviewed room brief</h2>
 				<p class="mt-3 text-sm leading-7 text-ink-700">
-					The prompt compiler turns this form into a structured room brief JSON plus provider-specific prompt instructions. Local runs use Ollama, while production routes through Gemini.
+					The generation plan now starts from the saved room brief for the selected photo, then layers preset guidance, aspect ratio, and any run-specific notes on top.
 				</p>
 
 				<form class="mt-6 space-y-5" method="POST" action="?/generateConcept">
@@ -173,7 +318,7 @@ async function handleFileChange(event: Event, key: string) {
 							<label class="text-sm font-medium text-ink-900" for="sourceAssetId">Source photo</label>
 							<select bind:value={selectedSourceAssetId} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="sourceAssetId" name="sourceAssetId" required>
 								<option disabled value="">Choose a source photo</option>
-								{#each data.activeAssets as asset}
+								{#each data.activeAssets as asset (asset.id)}
 									<option value={asset.id}>{asset.originalFilename ?? 'Uploaded room photo'}{#if asset.width && asset.height} - {asset.width} x {asset.height}{/if}</option>
 								{/each}
 							</select>
@@ -183,18 +328,35 @@ async function handleFileChange(event: Event, key: string) {
 							<label class="text-sm font-medium text-ink-900" for="presetId">Preset</label>
 							<select bind:value={selectedPresetId} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="presetId" name="presetId" required>
 								<option disabled value="">Choose a preset</option>
-								{#each matchingPresets as preset}
+								{#each matchingPresets as preset (preset.id)}
 									<option value={preset.id}>{preset.name}</option>
 								{/each}
 							</select>
 						</div>
 					</div>
 
+					<div class="rounded-2xl border border-ink-950/10 bg-paper-100/75 px-4 py-4 text-sm leading-7 text-ink-700">
+						<div class="flex flex-wrap items-start justify-between gap-3">
+							<div>
+								<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Selected room brief</p>
+								<p class="mt-2 text-ink-950">{selectedAsset?.roomBriefSummary ?? 'Choose a source photo to review its room brief.'}</p>
+							</div>
+							<span class="rounded-full border border-ink-950/10 bg-white px-3 py-1 text-xs uppercase tracking-[0.24em] text-ink-700">
+								{selectedRoomBriefStatus === 'reviewed' ? 'Reviewed' : 'Draft'}
+							</span>
+						</div>
+						{#if selectedRoomBriefStatus !== 'reviewed' && selectedAsset}
+							<p class="mt-3 text-terracotta-500">
+								This photo still uses a draft brief. You can generate now, but reviewing the brief usually produces tighter results.
+							</p>
+						{/if}
+					</div>
+
 					<div class="grid gap-4 sm:grid-cols-2">
 						<div class="space-y-2">
 							<label class="text-sm font-medium text-ink-900" for="aspectRatio">Aspect ratio</label>
 							<select bind:value={selectedAspectRatio} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="aspectRatio" name="aspectRatio" required>
-								{#each aspectRatioOptions as option}
+								{#each aspectRatioOptions as option (option.value)}
 									<option value={option.value}>{option.label} ({option.value})</option>
 								{/each}
 							</select>
@@ -208,13 +370,8 @@ async function handleFileChange(event: Event, key: string) {
 					</div>
 
 					<div class="space-y-2">
-						<label class="text-sm font-medium text-ink-900" for="protectedElements">Protected elements</label>
-						<input bind:value={protectedElements} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="protectedElements" maxlength="600" name="protectedElements" placeholder="Windows, fireplace, trim, built-ins, balcony doors..." type="text" />
-					</div>
-
-					<div class="space-y-2">
-						<label class="text-sm font-medium text-ink-900" for="additionalInstructions">Transformation notes</label>
-						<textarea bind:value={additionalInstructions} class="min-h-32 w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="additionalInstructions" maxlength="1200" name="additionalInstructions" placeholder="Example: Add an upscale but believable furniture package, keep the room airy, and avoid adding a rug under the dining table."></textarea>
+						<label class="text-sm font-medium text-ink-900" for="additionalInstructions">Run-specific notes</label>
+						<textarea bind:value={additionalInstructions} class="min-h-32 w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="additionalInstructions" maxlength="1200" name="additionalInstructions" placeholder="Example: Keep the balcony doors unobstructed, favor warm wood tones, and avoid adding a rug under the dining table."></textarea>
 					</div>
 
 					<div class="rounded-2xl border border-ink-950/10 bg-paper-100/75 px-4 py-4 text-sm leading-7 text-ink-700">
@@ -225,7 +382,7 @@ async function handleFileChange(event: Event, key: string) {
 						{/if}
 					</div>
 
-					<button class="rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100 disabled:opacity-60" disabled={data.activeAssets.length === 0 || matchingPresets.length === 0} type="submit">
+					<button class="rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100 disabled:opacity-60" disabled={!canGenerate} type="submit">
 						Generate concept
 					</button>
 				</form>
@@ -263,7 +420,7 @@ async function handleFileChange(event: Event, key: string) {
 					</div>
 				{:else}
 					<div class="mt-6 grid gap-5 lg:grid-cols-2">
-						{#each data.activeAssets as asset}
+						{#each data.activeAssets as asset (asset.id)}
 							<div class="overflow-hidden rounded-[1.75rem] border border-ink-950/10 bg-paper-100/70">
 								<div class="aspect-[4/3] bg-ink-950/5">
 									<img alt={asset.originalFilename ?? data.project.title} class="h-full w-full object-cover" src={asset.url} />
@@ -274,10 +431,19 @@ async function handleFileChange(event: Event, key: string) {
 											<p class="font-semibold text-ink-950">{asset.originalFilename ?? 'Uploaded room photo'}</p>
 											<p class="mt-1 text-sm text-ink-700">{formatBytes(asset.fileSizeBytes)}{#if asset.width && asset.height} - {asset.width} x {asset.height}{/if}</p>
 										</div>
-										<span class="rounded-full border border-ink-950/10 bg-white px-3 py-1 text-xs uppercase tracking-[0.24em] text-ink-700">
-											{asset.moderationStatus}
-										</span>
+										<div class="flex flex-col items-end gap-2">
+											<span class="rounded-full border border-ink-950/10 bg-white px-3 py-1 text-xs uppercase tracking-[0.24em] text-ink-700">
+												{asset.moderationStatus}
+											</span>
+											<span class="rounded-full border border-ink-950/10 bg-white px-3 py-1 text-xs uppercase tracking-[0.24em] text-ink-700">
+												{asset.roomBriefStatus === 'reviewed' ? 'Reviewed brief' : 'Draft brief'}
+											</span>
+										</div>
 									</div>
+
+									<p class="rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm leading-7 text-ink-700">
+										{asset.roomBriefSummary}
+									</p>
 
 									<form class="space-y-3" method="POST" action="?/replaceAsset" enctype="multipart/form-data">
 										<input name="sourceAssetId" type="hidden" value={asset.id} />
@@ -322,7 +488,7 @@ async function handleFileChange(event: Event, key: string) {
 					</div>
 				{:else}
 					<div class="mt-6 space-y-5">
-						{#each data.generationState.jobs as job}
+						{#each data.generationState.jobs as job (job.id)}
 							<div class="rounded-[1.75rem] border border-ink-950/10 bg-paper-100/70 p-5">
 								<div class="flex flex-wrap items-start justify-between gap-4">
 									<div>
@@ -351,7 +517,7 @@ async function handleFileChange(event: Event, key: string) {
 
 								{#if job.images.length > 0}
 									<div class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-										{#each job.images as image}
+										{#each job.images as image (image.id)}
 											<div class="overflow-hidden rounded-2xl border border-ink-950/10 bg-white">
 												<div class="aspect-[4/3] bg-ink-950/5">
 													<img alt={job.styleLabel ?? 'Generated concept'} class="h-full w-full object-cover" src={image.url} />
@@ -391,9 +557,9 @@ async function handleFileChange(event: Event, key: string) {
 			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur">
 				<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Phase 3 direction</p>
 				<ul class="mt-5 space-y-3 text-sm leading-7 text-ink-700">
-					<li>Local development uses a provider-aware route with Ollama and Flux-style prompting.</li>
-					<li>Production runs through Gemini using the same internal generation plan structure.</li>
-					<li>Every generation stores enough metadata to support future reruns, critique loops, and provider swaps.</li>
+					<li>Uploads now create a draft room brief automatically for the selected photo.</li>
+					<li>Reviewed briefs feed the generation plan before provider-specific prompt compilation.</li>
+					<li>Every generation still stores enough metadata to support future reruns, critique loops, and provider swaps.</li>
 				</ul>
 			</div>
 
@@ -410,7 +576,7 @@ async function handleFileChange(event: Event, key: string) {
 					</div>
 
 					<div class="mt-6 space-y-3">
-						{#each data.archivedAssets as asset}
+						{#each data.archivedAssets as asset (asset.id)}
 							<div class="rounded-2xl border border-ink-950/8 bg-paper-100/70 px-4 py-4 text-sm text-ink-700">
 								<p class="font-semibold text-ink-950">{asset.originalFilename ?? 'Archived room photo'}</p>
 								<p class="mt-1">Archived {asset.archivedAt ? new Date(asset.archivedAt).toLocaleDateString() : 'recently'} - {formatBytes(asset.fileSizeBytes)}</p>

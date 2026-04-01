@@ -59,6 +59,18 @@ Introduce a structured room-analysis layer that turns uploaded source photos int
 - The review step makes inferred, confirmed, and locked fields visible before generation.
 - The generation layer consumes the same room brief shape regardless of provider route.
 
+## Initial implementation status
+
+- Source-photo uploads now create a draft room brief automatically and store it with the selected source asset.
+- Project detail pages now include a structured room-brief review form plus a manual re-analyze action.
+- Generation now consumes the saved room brief for the selected source photo instead of relying only on ad hoc generation-form fields.
+
+## Remaining follow-up
+
+- Improve provider-backed extraction quality so more of the draft brief comes from image analysis instead of project-context fallbacks.
+- Add finer-grained field provenance beyond the current draft-versus-reviewed and locked-field treatment.
+- Expand from the current single-photo brief flow into richer multi-variant and gallery review surfaces.
+
 ## Relationship to other PRDs
 
 - Depends on `03-projects-and-uploads.md` for source-photo ownership and storage

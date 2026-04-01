@@ -14,7 +14,8 @@ Turn the current foundation into a product-ready core loop by delivering guided 
 
 - Foundation, auth, project creation, and source-photo management are working.
 - Generation requests already persist durable jobs, provider metadata, and output images.
-- The main missing product layers are room analysis, deliverable review, orchestration hardening, and billing enforcement.
+- The first room-brief slice is now in place: uploads create a draft brief, project pages allow structured review, and generation consumes the saved brief.
+- The main missing product layers are stronger provider-backed analysis quality, deliverable review, orchestration hardening, and billing enforcement.
 
 ## Recommended defaults
 
@@ -46,6 +47,11 @@ Exit criteria:
 - A new project with a source photo can produce a draft room brief.
 - The brief is editable before generation.
 - Generation uses the reviewed brief rather than only form-entered fields.
+
+Current status:
+
+- Initial delivery is shipped. Uploads create a stored draft brief, the project page exposes review and re-analysis actions, and the generation planner now uses the selected asset's saved brief.
+- The remaining work in this tranche is mostly about improving analysis quality, provenance depth, and confidence before moving fully into gallery and deliverables work.
 
 ### 2. Gallery, comparison, and deliverables
 

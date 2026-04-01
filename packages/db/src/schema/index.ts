@@ -54,6 +54,8 @@ export const moderationStatusEnum = pgEnum('moderation_status', [
 	'blocked',
 ])
 
+export const roomBriefStatusEnum = pgEnum('room_brief_status', ['missing', 'draft', 'reviewed'])
+
 export const user = pgTable('user', {
 	id: text('id').primaryKey(),
 	name: text('name').notNull(),
@@ -162,6 +164,11 @@ export const sourceAsset = pgTable(
 		width: integer('width'),
 		height: integer('height'),
 		moderationStatus: moderationStatusEnum('moderation_status').notNull().default('pending'),
+		roomBrief: jsonb('room_brief').notNull().default({}),
+		roomBriefStatus: roomBriefStatusEnum('room_brief_status').notNull().default('missing'),
+		roomBriefSummary: text('room_brief_summary'),
+		roomBriefGeneratedAt: timestamp('room_brief_generated_at', { withTimezone: true }),
+		roomBriefReviewedAt: timestamp('room_brief_reviewed_at', { withTimezone: true }),
 		archivedAt: timestamp('archived_at', { withTimezone: true }),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	},
