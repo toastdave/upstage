@@ -36,6 +36,19 @@ Monetize Upstage with prepaid credits and subscription tiers while protecting ma
 - The app blocks generation when balance is insufficient.
 - Credit ledger entries explain why a balance changed.
 
+## Initial implementation status
+
+- Users now receive the seeded free plan automatically when billing state is first loaded.
+- The app now grants starter credits from the active plan, shows recent ledger activity in the workspace, and exposes live credit balance on project detail pages.
+- Generation acceptance now deducts credits immediately, failed runs issue compensating refunds, and insufficient-balance runs are blocked server-side before execution begins.
+
+## Remaining follow-up
+
+- Build pricing, checkout, and billing-portal entrypoints with Polar.
+- Add webhook ingestion and replay-safe fulfillment for purchases and subscription changes.
+- Expand ledger visibility into a dedicated billing page with admin-friendly audit traces.
+- Add stronger concurrency protections around balance reservation once generation moves to async workers.
+
 ## Non-goals
 
 - Postpaid metered invoicing

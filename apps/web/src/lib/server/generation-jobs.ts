@@ -4,6 +4,13 @@ import {
 	getGenerationRoute,
 } from '$lib/server/ai/config'
 import { executeImageGeneration } from '$lib/server/ai/index'
+import {
+	buildGenerationChargeDescription,
+	buildGenerationRefundDescription,
+	buildInsufficientCreditsMessage,
+	ensureUserBillingState,
+	getCreditBalance,
+} from '$lib/server/billing'
 import { db } from '$lib/server/db'
 import {
 	buildGenerationAttemptKey,
@@ -21,6 +28,7 @@ import {
 	uploadStoredObject,
 } from '$lib/server/storage'
 import {
+	creditLedger,
 	generationImage,
 	generationJob,
 	generationPreset,
@@ -190,8 +198,11 @@ export async function executeProjectGeneration(options: {
 		throw new Error('Preset not found for this project workflow')
 	}
 
+	const normalizedAdditionalInstructions = normalizeAdditionalInstructions(
+		options.additionalInstructions
+	)
 	const generationPlan = buildGenerationPlan({
-		additionalInstructions: normalizeAdditionalInstructions(options.additionalInstructions),
+		additionalInstructions: normalizedAdditionalInstructions,
 		aspectRatio: options.aspectRatio,
 		preset: presetRecord,
 		project: projectRecord,
@@ -203,7 +214,7 @@ export async function executeProjectGeneration(options: {
 	const provider = getGenerationRoute()
 	const model = getConfiguredGenerationModel(provider)
 	const submissionKey = buildGenerationSubmissionKey({
-		additionalInstructions: options.additionalInstructions,
+		additionalInstructions: normalizedAdditionalInstructions,
 		aspectRatio: options.aspectRatio,
 		model,
 		presetId: presetRecord.id,
@@ -213,49 +224,22 @@ export async function executeProjectGeneration(options: {
 		sourceAssetId: sourceAssetRecord.id,
 		userId: options.userId,
 	})
-	const matchingJobs = await db
-		.select({
-			completedAt: generationJob.completedAt,
-			createdAt: generationJob.createdAt,
-			id: generationJob.id,
-			status: generationJob.status,
-		})
-		.from(generationJob)
-		.where(
-			and(
-				eq(generationJob.projectId, projectRecord.id),
-				eq(generationJob.sourceAssetId, sourceAssetRecord.id),
-				eq(generationJob.presetId, presetRecord.id),
-				eq(generationJob.aspectRatio, options.aspectRatio),
-				eq(generationJob.provider, provider),
-				eq(generationJob.model, model),
-				eq(generationJob.prompt, generationPlan.compiledPrompt)
-			)
-		)
-		.orderBy(desc(generationJob.createdAt))
-	const duplicateJob = matchingJobs.find((job) => shouldTreatAsDuplicateJob(job))
-
-	if (duplicateJob) {
-		return {
-			jobId: duplicateJob.id,
-			outcome: 'duplicate',
-			retryAttempt: matchingJobs.length,
-			status: duplicateJob.status,
-			trigger,
-		}
-	}
-
-	const retryAttempt = matchingJobs.length + 1
-	const idempotencyKey = buildGenerationAttemptKey(submissionKey, retryAttempt)
+	const createdJobId = crypto.randomUUID()
+	const chargeReferenceId = `generation:${createdJobId}:charge`
+	const refundReferenceId = `generation:${createdJobId}:refund`
+	const projectTitle = projectRecord.title
+	let balanceAfterCharge: number | null = null
+	let retryAttempt = 1
+	let createdJob: { id: string } | undefined
 	const acceptedAt = new Date()
 	const baseRequestMetadata = {
 		roomBrief: generationPlan.roomBrief,
 		submission: {
-			additionalInstructions: normalizeAdditionalInstructions(options.additionalInstructions),
+			additionalInstructions: normalizedAdditionalInstructions,
 			aspectRatio: options.aspectRatio,
 			presetId: presetRecord.id,
 			presetName: presetRecord.name,
-			retryAttempt,
+			retryAttempt: 1,
 			retryOfJobId: options.retryOfJobId ?? null,
 			sourceAssetId: sourceAssetRecord.id,
 			submissionKey,
@@ -264,38 +248,138 @@ export async function executeProjectGeneration(options: {
 		},
 	} satisfies Record<string, unknown>
 	const baseResponseMetadata = {
+		billing: {
+			balanceAfterCharge: null,
+			chargeReferenceId,
+			chargedCredits: generationPlan.creditEstimate,
+			refundReferenceId: null,
+			refundedCredits: 0,
+		},
 		execution: {
 			acceptedAt: acceptedAt.toISOString(),
-			retryAttempt,
+			retryAttempt: 1,
 			retryOfJobId: options.retryOfJobId ?? null,
 			trigger,
 		},
 	} satisfies Record<string, unknown>
 
-	let createdJob: { id: string } | undefined
-
 	try {
-		;[createdJob] = await db
-			.insert(generationJob)
-			.values({
-				projectId: projectRecord.id,
-				sourceAssetId: sourceAssetRecord.id,
-				presetId: presetRecord.id,
-				status: 'queued',
-				provider,
-				model,
-				prompt: generationPlan.compiledPrompt,
-				styleLabel: projectRecord.styleIntent ?? presetRecord.name,
-				roomType: projectRecord.roomType,
-				aspectRatio: options.aspectRatio,
-				requestedCount: 1,
-				creditCost: generationPlan.creditEstimate,
-				idempotencyKey,
-				requestMetadata: baseRequestMetadata,
-				responseMetadata: baseResponseMetadata,
+		const creationResult = await db.transaction(async (tx) => {
+			await ensureUserBillingState(tx, options.userId)
+
+			const matchingJobs = await tx
+				.select({
+					completedAt: generationJob.completedAt,
+					createdAt: generationJob.createdAt,
+					id: generationJob.id,
+					status: generationJob.status,
+				})
+				.from(generationJob)
+				.where(
+					and(
+						eq(generationJob.projectId, projectRecord.id),
+						eq(generationJob.sourceAssetId, sourceAssetRecord.id),
+						eq(generationJob.presetId, presetRecord.id),
+						eq(generationJob.aspectRatio, options.aspectRatio),
+						eq(generationJob.provider, provider),
+						eq(generationJob.model, model),
+						eq(generationJob.prompt, generationPlan.compiledPrompt)
+					)
+				)
+				.orderBy(desc(generationJob.createdAt))
+
+			const duplicateJob = matchingJobs.find((job) => shouldTreatAsDuplicateJob(job))
+
+			if (duplicateJob) {
+				return {
+					result: {
+						jobId: duplicateJob.id,
+						outcome: 'duplicate' as const,
+						retryAttempt: matchingJobs.length,
+						status: duplicateJob.status,
+						trigger,
+					},
+					type: 'duplicate' as const,
+				}
+			}
+
+			retryAttempt = matchingJobs.length + 1
+			const idempotencyKey = buildGenerationAttemptKey(submissionKey, retryAttempt)
+			const creditBalance = await getCreditBalance(tx, options.userId)
+
+			if (creditBalance < generationPlan.creditEstimate) {
+				throw new Error(
+					buildInsufficientCreditsMessage(creditBalance, generationPlan.creditEstimate)
+				)
+			}
+
+			const requestMetadata = {
+				...baseRequestMetadata,
+				submission: {
+					...(baseRequestMetadata.submission as Record<string, unknown>),
+					retryAttempt,
+				},
+			} satisfies Record<string, unknown>
+			const responseMetadata = {
+				...baseResponseMetadata,
+				billing: {
+					...(baseResponseMetadata.billing as Record<string, unknown>),
+					balanceAfterCharge: creditBalance - generationPlan.creditEstimate,
+				},
+				execution: {
+					...(baseResponseMetadata.execution as Record<string, unknown>),
+					retryAttempt,
+				},
+			} satisfies Record<string, unknown>
+			balanceAfterCharge = creditBalance - generationPlan.creditEstimate
+			;[createdJob] = await tx
+				.insert(generationJob)
+				.values({
+					id: createdJobId,
+					projectId: projectRecord.id,
+					sourceAssetId: sourceAssetRecord.id,
+					presetId: presetRecord.id,
+					status: 'queued',
+					provider,
+					model,
+					prompt: generationPlan.compiledPrompt,
+					styleLabel: projectRecord.styleIntent ?? presetRecord.name,
+					roomType: projectRecord.roomType,
+					aspectRatio: options.aspectRatio,
+					requestedCount: 1,
+					creditCost: generationPlan.creditEstimate,
+					idempotencyKey,
+					requestMetadata: requestMetadata,
+					responseMetadata: responseMetadata,
+				})
+				.returning({ id: generationJob.id })
+
+			await tx.insert(creditLedger).values({
+				amount: -generationPlan.creditEstimate,
+				balanceAfter: creditBalance - generationPlan.creditEstimate,
+				description: buildGenerationChargeDescription(projectTitle),
+				entryType: 'generation',
+				referenceId: chargeReferenceId,
+				userId: options.userId,
 			})
-			.returning({ id: generationJob.id })
+
+			return {
+				result: {
+					jobId: createdJobId,
+					outcome: 'created' as const,
+					retryAttempt,
+					status: 'queued' as const,
+					trigger,
+				},
+				type: 'created' as const,
+			}
+		})
+
+		if (creationResult.type === 'duplicate') {
+			return creationResult.result
+		}
 	} catch (error) {
+		const idempotencyKey = buildGenerationAttemptKey(submissionKey, retryAttempt)
 		const [existingJob] = await db
 			.select({
 				id: generationJob.id,
@@ -322,6 +406,27 @@ export async function executeProjectGeneration(options: {
 		throw new Error('Generation job could not be created')
 	}
 
+	const acceptedJobId = createdJob.id
+
+	const persistedRequestMetadata = {
+		...baseRequestMetadata,
+		submission: {
+			...(baseRequestMetadata.submission as Record<string, unknown>),
+			retryAttempt,
+		},
+	} satisfies Record<string, unknown>
+	const persistedResponseMetadata = {
+		...baseResponseMetadata,
+		billing: {
+			...(baseResponseMetadata.billing as Record<string, unknown>),
+			balanceAfterCharge,
+		},
+		execution: {
+			...(baseResponseMetadata.execution as Record<string, unknown>),
+			retryAttempt,
+		},
+	} satisfies Record<string, unknown>
+
 	const processingStartedAt = new Date()
 
 	await db
@@ -331,14 +436,14 @@ export async function executeProjectGeneration(options: {
 			status: 'processing',
 			updatedAt: processingStartedAt,
 			responseMetadata: {
-				...baseResponseMetadata,
+				...persistedResponseMetadata,
 				execution: {
-					...(baseResponseMetadata.execution as Record<string, unknown>),
+					...(persistedResponseMetadata.execution as Record<string, unknown>),
 					startedAt: processingStartedAt.toISOString(),
 				},
 			},
 		})
-		.where(eq(generationJob.id, createdJob.id))
+		.where(eq(generationJob.id, acceptedJobId))
 
 	try {
 		const sourceObject = await getStoredObject(sourceAssetRecord.storageKey)
@@ -349,10 +454,10 @@ export async function executeProjectGeneration(options: {
 
 		const sourceBuffer = new Uint8Array(await sourceObject.Body.transformToByteArray())
 		const executionResult = await executeImageGeneration({
-			additionalInstructions: options.additionalInstructions,
+			additionalInstructions: normalizedAdditionalInstructions,
 			aspectRatio: options.aspectRatio,
 			compiledPrompt: generationPlan.compiledPrompt,
-			jobId: createdJob.id,
+			jobId: acceptedJobId,
 			presetName: presetRecord.name,
 			projectSlug: projectRecord.slug,
 			protectedElements:
@@ -375,7 +480,7 @@ export async function executeProjectGeneration(options: {
 		for (const image of executionResult.images) {
 			const storageKey = buildGenerationAssetStorageKey(
 				projectRecord.slug,
-				createdJob.id,
+				acceptedJobId,
 				image.sortOrder,
 				image.mimeType
 			)
@@ -388,7 +493,7 @@ export async function executeProjectGeneration(options: {
 			})
 
 			await db.insert(generationImage).values({
-				jobId: createdJob.id,
+				jobId: acceptedJobId,
 				storageKey,
 				url: buildStoredMediaUrl(storageKey),
 				mimeType: image.mimeType,
@@ -409,13 +514,14 @@ export async function executeProjectGeneration(options: {
 				model: executionResult.model,
 				providerGenerationId: executionResult.providerGenerationId ?? null,
 				requestMetadata: {
-					...baseRequestMetadata,
+					...persistedRequestMetadata,
 					providerRequest: executionResult.requestMetadata,
 				},
 				responseMetadata: {
 					...executionResult.responseMetadata,
+					billing: persistedResponseMetadata.billing,
 					execution: {
-						...(baseResponseMetadata.execution as Record<string, unknown>),
+						...(persistedResponseMetadata.execution as Record<string, unknown>),
 						completedAt: completedAt.toISOString(),
 						imageCount: executionResult.images.length,
 						startedAt: processingStartedAt.toISOString(),
@@ -426,10 +532,10 @@ export async function executeProjectGeneration(options: {
 				completedAt,
 				updatedAt: completedAt,
 			})
-			.where(eq(generationJob.id, createdJob.id))
+			.where(eq(generationJob.id, acceptedJobId))
 
 		return {
-			jobId: createdJob.id,
+			jobId: acceptedJobId,
 			outcome: 'created',
 			retryAttempt,
 			status: 'succeeded',
@@ -439,26 +545,63 @@ export async function executeProjectGeneration(options: {
 		const failure = classifyGenerationFailure(error)
 		const completedAt = new Date()
 
-		await db
-			.update(generationJob)
-			.set({
-				completedAt,
-				errorMessage: failure.message,
-				responseMetadata: {
-					execution: {
-						...(baseResponseMetadata.execution as Record<string, unknown>),
-						completedAt: completedAt.toISOString(),
-						startedAt: processingStartedAt.toISOString(),
+		await db.transaction(async (tx) => {
+			const [existingRefund] = await tx
+				.select({ id: creditLedger.id })
+				.from(creditLedger)
+				.where(
+					and(
+						eq(creditLedger.referenceId, refundReferenceId),
+						eq(creditLedger.userId, options.userId)
+					)
+				)
+				.limit(1)
+
+			let refundedCredits = 0
+			let balanceAfterRefund: number | null = null
+
+			if (!existingRefund) {
+				const creditBalance = await getCreditBalance(tx, options.userId)
+				refundedCredits = generationPlan.creditEstimate
+				balanceAfterRefund = creditBalance + generationPlan.creditEstimate
+
+				await tx.insert(creditLedger).values({
+					amount: generationPlan.creditEstimate,
+					balanceAfter: balanceAfterRefund,
+					description: buildGenerationRefundDescription(projectTitle),
+					entryType: 'refund',
+					referenceId: refundReferenceId,
+					userId: options.userId,
+				})
+			}
+
+			await tx
+				.update(generationJob)
+				.set({
+					completedAt,
+					errorMessage: failure.message,
+					responseMetadata: {
+						billing: {
+							...(persistedResponseMetadata.billing as Record<string, unknown>),
+							balanceAfterRefund,
+							refundReferenceId,
+							refundedCredits,
+						},
+						execution: {
+							...(persistedResponseMetadata.execution as Record<string, unknown>),
+							completedAt: completedAt.toISOString(),
+							startedAt: processingStartedAt.toISOString(),
+						},
+						failure: {
+							...failure,
+							failedAt: completedAt.toISOString(),
+						},
 					},
-					failure: {
-						...failure,
-						failedAt: completedAt.toISOString(),
-					},
-				},
-				status: 'failed',
-				updatedAt: completedAt,
-			})
-			.where(eq(generationJob.id, createdJob.id))
+					status: 'failed',
+					updatedAt: completedAt,
+				})
+				.where(eq(generationJob.id, acceptedJobId))
+		})
 
 		throw error
 	}

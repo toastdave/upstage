@@ -48,6 +48,7 @@ const runtimeCapability = $derived(
 	)
 )
 const estimatedCredits = $derived(estimateGenerationCredits(selectedAspectRatio || '4:3'))
+const hasEnoughCredits = $derived(data.billing.creditBalance >= estimatedCredits)
 const selectedAsset = $derived(
 	data.activeAssets.find((asset: ProjectAsset) => asset.id === selectedSourceAssetId) ??
 		data.activeAssets[0] ??
@@ -249,6 +250,9 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 		</span>
 		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.24em]">
 			{runtimeCapability?.label ?? data.generationState.generationRoute}
+		</span>
+		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.24em]">
+			{data.billing.creditBalance} credits available
 		</span>
 	</div>
 
@@ -463,12 +467,18 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 							</select>
 						</div>
 
-						<div class="rounded-2xl border border-ink-950/10 bg-paper-100/75 px-4 py-4">
-							<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Estimated live cost</p>
-							<p class="mt-2 font-display text-3xl text-ink-950">{estimatedCredits} credits</p>
-							<p class="mt-2 text-sm leading-7 text-ink-700">Credits remain a planning estimate until billing hooks are live.</p>
-						</div>
+					<div class="rounded-2xl border border-ink-950/10 bg-paper-100/75 px-4 py-4">
+						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Estimated live cost</p>
+						<p class="mt-2 font-display text-3xl text-ink-950">{estimatedCredits} credits</p>
+						<p class="mt-2 text-sm leading-7 text-ink-700">Available balance: {data.billing.creditBalance} credits on the {data.billing.currentPlan.name} plan.</p>
 					</div>
+				</div>
+
+					{#if !hasEnoughCredits}
+						<p class="rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
+							This run needs {estimatedCredits} credits, but only {data.billing.creditBalance} are available right now.
+						</p>
+					{/if}
 
 					<div class="space-y-2">
 						<label class="text-sm font-medium text-ink-900" for="additionalInstructions">Run-specific notes</label>
@@ -483,7 +493,7 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 						{/if}
 					</div>
 
-					<button class="rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100 disabled:opacity-60" disabled={!canGenerate} type="submit">
+					<button class="rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100 disabled:opacity-60" disabled={!canGenerate || !hasEnoughCredits} type="submit">
 						Generate concept
 					</button>
 				</form>
@@ -726,7 +736,7 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 
 								<div class="mt-4 flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-ink-700/80">
 									<span class="rounded-full bg-white px-3 py-1">Created {new Date(job.createdAt).toLocaleString()}</span>
-									<span class="rounded-full bg-white px-3 py-1">Est. {job.creditCost} credits</span>
+									<span class="rounded-full bg-white px-3 py-1">Charge {job.creditCost} credits</span>
 									{#if retryAttempt}
 										<span class="rounded-full bg-white px-3 py-1">Attempt {retryAttempt}</span>
 									{/if}

@@ -1,7 +1,8 @@
+import { loadUserBillingSnapshot } from '$lib/server/billing'
 import { db } from '$lib/server/db'
 import { createProjectSlug, normalizeOptionalText, parseProjectType } from '$lib/server/projects'
 import { fail, redirect } from '@sveltejs/kit'
-import { creditLedger, project, sourceAsset } from '@upstage/db/schema'
+import { project, sourceAsset } from '@upstage/db/schema'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import type { Actions, PageServerLoad } from './$types'
 
@@ -33,17 +34,13 @@ export const load: PageServerLoad = async ({ locals }) => {
 		.groupBy(project.id)
 		.orderBy(desc(project.updatedAt))
 
-	const [{ creditBalance }] = await db
-		.select({
-			creditBalance: sql<number>`coalesce(sum(${creditLedger.amount}), 0)`,
-		})
-		.from(creditLedger)
-		.where(eq(creditLedger.userId, locals.user.id))
+	const billing = await loadUserBillingSnapshot(locals.user.id)
 
 	const sourcePhotoCount = projects.reduce((total, item) => total + item.activeAssetCount, 0)
 
 	return {
-		creditBalance,
+		billing,
+		creditBalance: billing.creditBalance,
 		projectCount: projects.length,
 		projects,
 		session: locals.session,

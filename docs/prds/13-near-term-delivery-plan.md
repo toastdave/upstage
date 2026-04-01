@@ -97,7 +97,7 @@ Exit criteria:
 
 Current status:
 
-- Initial hardening is shipped. Generation submissions now use deterministic idempotency keys, recent duplicate runs are deduplicated, and failed jobs can be retried safely from the project page.
+- Initial hardening is shipped. Generation submissions now use deterministic idempotency keys, recent duplicate runs are deduplicated, failed jobs can be retried safely from the project page, and billing hooks now issue compensating refunds on failed runs.
 - Failure metadata now records retry eligibility and coarse failure categories in job history.
 - The remaining work in this tranche is to move execution off the request path, add cancellation rules, and expose stronger support-facing diagnostics.
 
@@ -120,6 +120,12 @@ Exit criteria:
 - Checkout can be validated in Polar sandbox end to end.
 - Generation is blocked when balance is insufficient.
 - Every balance change is explainable from the ledger.
+
+Current status:
+
+- Initial enforcement is shipped. Users now receive the seeded free plan and starter credits automatically, project pages show live credit balance, and the server blocks insufficient-balance generations before provider execution starts.
+- Generation acceptance now records signed ledger entries, and failed jobs create compensating refund entries so balance changes remain traceable from the workspace.
+- The remaining work in this tranche is checkout, webhook-backed fulfillment, portal access, and richer billing/account surfaces.
 
 ### 5. Upload and account polish
 

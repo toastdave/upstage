@@ -56,6 +56,12 @@ Default product decisions for the next slice:
 - Enforce server-side balance checks and credit deductions.
 - Add moderation review, abuse handling, and policy-driven denials.
 
+Current status:
+
+- Seeded plans now back real starter-credit grants, workspace pages show recent credit ledger activity, and project detail pages show live available balance.
+- Generation acceptance now enforces insufficient-balance checks server-side, deducts credits when a run is accepted, and issues compensating refunds when execution fails.
+- Remaining work is focused on Polar checkout and portal flows, webhook-backed fulfillment, and fuller billing/admin surfaces.
+
 ## Phase 5 - Polish And Growth
 
 - Add analytics, audit trails, and operational runbooks.

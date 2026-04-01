@@ -24,8 +24,16 @@ $effect(() => {
 const heroStats = $derived([
 	{ label: 'Projects', value: String(data.projectCount) },
 	{ label: 'Source photos', value: String(data.sourcePhotoCount) },
-	{ label: 'Credits', value: String(data.creditBalance) },
+	{ label: 'Credits', value: String(data.billing.creditBalance) },
 ])
+
+function formatLedgerAmount(amount: number) {
+	return `${amount > 0 ? '+' : ''}${amount}`
+}
+
+function formatLedgerEntryType(entryType: string) {
+	return entryType.replaceAll('_', ' ')
+}
 
 async function signOut() {
 	isSigningOut = true
@@ -62,7 +70,7 @@ async function signOut() {
 				</p>
 
 				<div class="mt-8 grid gap-4 sm:grid-cols-3">
-					{#each heroStats as stat}
+					{#each heroStats as stat (stat.label)}
 						<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
 							<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">{stat.label}</p>
 							<p class="mt-2 font-display text-3xl text-ink-950">{stat.value}</p>
@@ -88,7 +96,7 @@ async function signOut() {
 					</div>
 				{:else}
 					<div class="mt-6 grid gap-4 lg:grid-cols-2">
-						{#each data.projects as item}
+						{#each data.projects as item (item.id)}
 							<a class="rounded-[1.75rem] border border-ink-950/10 bg-paper-100/70 p-5 transition hover:-translate-y-0.5 hover:border-ink-950/20 hover:bg-white" href={`/account/projects/${item.slug}`}>
 								<div class="flex items-start justify-between gap-4">
 									<div>
@@ -140,7 +148,7 @@ async function signOut() {
 					<div class="space-y-3">
 						<p class="text-sm font-medium text-ink-900">Workflow</p>
 						<div class="grid gap-3">
-							{#each projectTypeCards as card}
+							{#each projectTypeCards as card (card.value)}
 								<label class="cursor-pointer rounded-[1.5rem] border px-4 py-4 transition {selectedProjectType === card.value ? 'border-moss-500 bg-moss-500/8' : 'border-ink-950/10 bg-paper-100/75'}">
 									<input bind:group={selectedProjectType} class="sr-only" name="projectType" type="radio" value={card.value} />
 									<p class="font-semibold text-ink-950">{card.label}</p>
@@ -155,7 +163,7 @@ async function signOut() {
 							<label class="text-sm font-medium text-ink-900" for="roomType">Room type</label>
 							<select class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="roomType" name="roomType">
 								<option value="">Select a room</option>
-								{#each roomTypeOptions as option}
+								{#each roomTypeOptions as option (option)}
 									<option selected={createProjectValues?.roomType === option} value={option}>{option}</option>
 								{/each}
 							</select>
@@ -165,7 +173,7 @@ async function signOut() {
 							<label class="text-sm font-medium text-ink-900" for="propertyType">Property type</label>
 							<select class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="propertyType" name="propertyType">
 								<option value="">Select a property</option>
-								{#each propertyTypeOptions as option}
+								{#each propertyTypeOptions as option (option)}
 									<option selected={createProjectValues?.propertyType === option} value={option}>{option}</option>
 								{/each}
 							</select>
@@ -214,8 +222,45 @@ async function signOut() {
 					</div>
 
 					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
+						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Current plan</p>
+						<p class="mt-2 font-semibold text-ink-950">{data.billing.currentPlan.name}</p>
+						<p class="mt-1 leading-7">Includes {data.billing.currentPlan.includedCredits} starter credits in the current seeded billing model.</p>
+					</div>
+
+					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
 						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Next milestone</p>
-						<p class="mt-2 leading-7">Upload source photos to each project now, then generation setup and galleries slot in cleanly on top.</p>
+						<p class="mt-2 leading-7">Billing guardrails now block insufficient-balance generations. Checkout, portal access, and webhook-backed top-ups are the next layer.</p>
+					</div>
+
+					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
+						<div class="flex items-center justify-between gap-4">
+							<div>
+								<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Recent credit activity</p>
+								<p class="mt-2 font-semibold text-ink-950">Balance {data.billing.creditBalance} credits</p>
+							</div>
+						</div>
+
+						<div class="mt-4 space-y-3">
+							{#each data.billing.recentLedger as entry (entry.id)}
+								<div class="rounded-2xl border border-ink-950/8 bg-white px-4 py-4">
+									<div class="flex items-start justify-between gap-4">
+										<div>
+											<p class="text-xs uppercase tracking-[0.22em] text-ink-700/70">{formatLedgerEntryType(entry.entryType)}</p>
+											<p class="mt-2 text-sm leading-7 text-ink-950">{entry.description ?? 'Credit balance updated'}</p>
+										</div>
+										<p class={`rounded-full px-3 py-1 text-xs font-semibold ${entry.amount >= 0 ? 'bg-moss-500/12 text-moss-500' : 'bg-terracotta-500/12 text-terracotta-500'}`}>
+											{formatLedgerAmount(entry.amount)} credits
+										</p>
+									</div>
+									<p class="mt-3 text-xs uppercase tracking-[0.22em] text-ink-700/70">
+										{new Date(entry.createdAt).toLocaleString()}
+										{#if entry.balanceAfter !== null}
+											 - Balance after {entry.balanceAfter}
+										{/if}
+									</p>
+								</div>
+							{/each}
+						</div>
 					</div>
 				</div>
 

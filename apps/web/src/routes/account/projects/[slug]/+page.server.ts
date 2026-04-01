@@ -1,6 +1,7 @@
 import { aspectRatioOptions } from '$lib/generation'
 import { formatProjectType } from '$lib/projects'
 import { buildFallbackRoomBrief, buildRoomBriefSummary, normalizeRoomBrief } from '$lib/room-briefs'
+import { loadUserBillingSnapshot } from '$lib/server/billing'
 import { db } from '$lib/server/db'
 import {
 	executeProjectGeneration,
@@ -174,6 +175,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 	}
 
 	const projectRecord = await getOwnedProject(params.slug, locals.user.id)
+	const billing = await loadUserBillingSnapshot(locals.user.id)
 	const assets = await db
 		.select()
 		.from(sourceAsset)
@@ -185,6 +187,7 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 	return {
 		activeAssets: decoratedAssets.filter((item) => item.archivedAt === null),
 		archivedAssets: decoratedAssets.filter((item) => item.archivedAt !== null),
+		billing,
 		generationState,
 		project: {
 			...projectRecord,
