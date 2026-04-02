@@ -1,14 +1,16 @@
 import { aspectRatioOptions } from '$lib/generation'
-import { formatProjectType } from '$lib/projects'
 import { buildFallbackRoomBrief, buildRoomBriefSummary, normalizeRoomBrief } from '$lib/room-briefs'
-import { loadUserBillingSnapshot } from '$lib/server/billing'
 import { db } from '$lib/server/db'
 import {
 	cancelProjectGeneration,
 	executeProjectGeneration,
-	loadProjectGenerationState,
 	retryProjectGeneration,
 } from '$lib/server/generation-jobs'
+import {
+	getOwnedProject,
+	loadProjectWorkspaceData,
+	toggleProjectGenerationImageFavorite,
+} from '$lib/server/project-library'
 import { normalizeOptionalText } from '$lib/server/projects'
 import { buildDraftRoomBrief } from '$lib/server/room-analysis'
 import {
@@ -22,24 +24,10 @@ import {
 	sourceUploadConstraints,
 	validateSourceUpload,
 } from '$lib/server/uploads'
-import { error, fail, redirect } from '@sveltejs/kit'
-import { generationImage, generationJob, project, sourceAsset } from '@upstage/db/schema'
+import { fail, redirect } from '@sveltejs/kit'
+import { generationJob, type project, sourceAsset } from '@upstage/db/schema'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import type { Actions, PageServerLoad } from './$types'
-
-async function getOwnedProject(slug: string, userId: string) {
-	const [record] = await db
-		.select()
-		.from(project)
-		.where(and(eq(project.slug, slug), eq(project.ownerUserId, userId)))
-		.limit(1)
-
-	if (!record) {
-		throw error(404, 'Project not found')
-	}
-
-	return record
-}
 
 async function getReplaceableAsset(sourceAssetId: string, projectId: string, userId: string) {
 	const [record] = await db
@@ -53,20 +41,6 @@ async function getReplaceableAsset(sourceAssetId: string, projectId: string, use
 				isNull(sourceAsset.archivedAt)
 			)
 		)
-		.limit(1)
-
-	return record ?? null
-}
-
-async function getProjectGenerationImage(generationImageId: string, projectId: string) {
-	const [record] = await db
-		.select({
-			id: generationImage.id,
-			isFavorite: generationImage.isFavorite,
-		})
-		.from(generationImage)
-		.innerJoin(generationJob, eq(generationJob.id, generationImage.jobId))
-		.where(and(eq(generationImage.id, generationImageId), eq(generationJob.projectId, projectId)))
 		.limit(1)
 
 	return record ?? null
@@ -131,25 +105,6 @@ async function saveSourceAsset(options: {
 	})
 }
 
-function decorateAssetWithRoomBrief(
-	projectRecord: typeof project.$inferSelect,
-	asset: typeof sourceAsset.$inferSelect
-) {
-	const fallbackRoomBrief = buildFallbackRoomBrief({
-		project: projectRecord,
-		sourceAsset: {
-			originalFilename: asset.originalFilename,
-		},
-	})
-	const roomBrief = normalizeRoomBrief(asset.roomBrief, fallbackRoomBrief)
-
-	return {
-		...asset,
-		roomBrief,
-		roomBriefSummary: asset.roomBriefSummary ?? buildRoomBriefSummary(roomBrief),
-	}
-}
-
 function buildGenerationResultMessage(
 	result: Awaited<ReturnType<typeof executeProjectGeneration>>
 ) {
@@ -183,25 +138,8 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 		throw redirect(303, `/auth/sign-in?redirectTo=/account/projects/${params.slug}`)
 	}
 
-	const projectRecord = await getOwnedProject(params.slug, locals.user.id)
-	const billing = await loadUserBillingSnapshot(locals.user.id)
-	const assets = await db
-		.select()
-		.from(sourceAsset)
-		.where(eq(sourceAsset.projectId, projectRecord.id))
-		.orderBy(desc(sourceAsset.createdAt))
-	const generationState = await loadProjectGenerationState(projectRecord.id)
-	const decoratedAssets = assets.map((asset) => decorateAssetWithRoomBrief(projectRecord, asset))
-
 	return {
-		activeAssets: decoratedAssets.filter((item) => item.archivedAt === null),
-		archivedAssets: decoratedAssets.filter((item) => item.archivedAt !== null),
-		billing,
-		generationState,
-		project: {
-			...projectRecord,
-			projectTypeLabel: formatProjectType(projectRecord.projectType),
-		},
+		...(await loadProjectWorkspaceData(params.slug, locals.user.id)),
 		session: locals.session,
 		sourceUploadConstraints,
 		user: locals.user,
@@ -621,9 +559,12 @@ export const actions: Actions = {
 		const formData = await request.formData()
 		const generationImageEntry = formData.get('generationImageId')
 		const generationImageId = typeof generationImageEntry === 'string' ? generationImageEntry : ''
-		const targetImage = await getProjectGenerationImage(generationImageId, projectRecord.id)
+		const result = await toggleProjectGenerationImageFavorite({
+			generationImageId,
+			projectId: projectRecord.id,
+		})
 
-		if (!targetImage) {
+		if (!result) {
 			return fail(404, {
 				error: 'We could not find that generated image in this project.',
 				form: 'toggleFavorite',
@@ -631,16 +572,9 @@ export const actions: Actions = {
 			})
 		}
 
-		const nextValue = !targetImage.isFavorite
-
-		await db
-			.update(generationImage)
-			.set({ isFavorite: nextValue })
-			.where(eq(generationImage.id, targetImage.id))
-
 		return {
 			form: 'toggleFavorite',
-			message: nextValue
+			message: result.isFavorite
 				? 'Marked this render as a favorite deliverable.'
 				: 'Removed this render from favorites.',
 			values: { generationImageId },

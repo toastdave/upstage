@@ -1,4 +1,5 @@
 <script lang="ts">
+import { resolve } from '$app/paths'
 import { aspectRatioOptions, estimateGenerationCredits, formatAspectRatio } from '$lib/generation'
 import { formatBytes } from '$lib/projects'
 import {
@@ -261,7 +262,7 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 
 <section class="mx-auto max-w-6xl px-6 py-10 sm:px-8 lg:px-10">
 	<div class="flex flex-wrap items-center gap-3 text-sm text-ink-700">
-		<button class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 font-semibold text-ink-900" type="button" onclick={() => window.location.assign('/account')}>
+		<button class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 font-semibold text-ink-900" type="button" onclick={() => window.location.assign(resolve('/account'))}>
 			Back to workspace
 		</button>
 		<span class="rounded-full border border-ink-950/10 bg-white/70 px-4 py-2 text-xs uppercase tracking-[0.24em]">
@@ -497,7 +498,7 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 						<p class="rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
 							This run needs {estimatedCredits} credits, but only {data.billing.creditBalance} are available right now.
 							{#if data.billing.polar.checkoutReady}
-								<a class="ml-2 underline underline-offset-4" href="/account/billing/checkout">Top up in {data.billing.polar.environmentLabel.toLowerCase()}</a>
+								<a class="ml-2 underline underline-offset-4" href={resolve('/account/billing/checkout')}>Top up in {data.billing.polar.environmentLabel.toLowerCase()}</a>
 							{/if}
 						</p>
 					{/if}
@@ -545,9 +546,14 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 							Compare each generated result against its source photo, mark favorites, and download the versions you want to keep.
 						</p>
 					</div>
-					<span class="rounded-full border border-ink-950/10 bg-paper-100 px-4 py-2 text-xs uppercase tracking-[0.24em] text-ink-700">
-						{favoriteDeliverableCount} favorites
-					</span>
+					<div class="flex flex-wrap items-center gap-3">
+						<a class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm font-semibold text-ink-900" href={resolve(`/account/projects/${data.project.slug}/gallery`)}>
+							Open gallery library
+						</a>
+						<span class="rounded-full border border-ink-950/10 bg-paper-100 px-4 py-2 text-xs uppercase tracking-[0.24em] text-ink-700">
+							{favoriteDeliverableCount} favorites
+						</span>
+					</div>
 				</div>
 
 				{#if form?.form === 'toggleFavorite' && form.message}
@@ -579,12 +585,15 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 											{job.sourceAsset?.originalFilename ?? 'Source photo'} - {formatAspectRatio(job.aspectRatio)}
 										</p>
 									</div>
-									<div class="flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-ink-700/80">
-										<span class="rounded-full bg-white px-3 py-1">{job.images.length} outputs</span>
-										<span class="rounded-full bg-white px-3 py-1">Created {new Date(job.createdAt).toLocaleDateString()}</span>
-										{#if job.images.some((image: GeneratedImage) => image.isFavorite)}
-											<span class="rounded-full bg-moss-500/12 px-3 py-1 text-moss-500">Favorite saved</span>
-										{/if}
+								<div class="flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-ink-700/80">
+									<span class="rounded-full bg-white px-3 py-1">{job.images.length} outputs</span>
+									<span class="rounded-full bg-white px-3 py-1">Created {new Date(job.createdAt).toLocaleDateString()}</span>
+									<a class="rounded-full bg-white px-3 py-1 hover:bg-paper-100" href={resolve(`/account/projects/${data.project.slug}/jobs/${job.id}`)}>
+										Open batch
+									</a>
+									{#if job.images.some((image: GeneratedImage) => image.isFavorite)}
+										<span class="rounded-full bg-moss-500/12 px-3 py-1 text-moss-500">Favorite saved</span>
+									{/if}
 									</div>
 								</div>
 

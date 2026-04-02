@@ -1,4 +1,5 @@
 <script lang="ts">
+import { resolve } from '$app/paths'
 import { siteConfig } from '$lib/config/site'
 import type { PageData } from './$types'
 
@@ -68,14 +69,21 @@ const workflows = [
 				and documents the roadmap for building Upstage into a polished staging workflow.
 			</p>
 			<div class="flex flex-wrap gap-3">
-				<a class="rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100" href={data.user ? '/account' : '/auth/sign-up?redirectTo=/account'}>
-					{data.user ? 'Open account' : 'Create an account'}
-				</a>
-				{#if !data.user}
-					<a class="rounded-full border border-ink-950/10 bg-white/80 px-5 py-3 text-sm font-semibold text-ink-700" href="/auth/sign-in?redirectTo=/account">
+				{#if data.user}
+					<a class="rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100" href={resolve('/account')}>
+						Open account
+					</a>
+				{:else}
+					<a class="rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100" href={resolve('/auth/sign-up?redirectTo=/account')}>
+						Create an account
+					</a>
+					<a class="rounded-full border border-ink-950/10 bg-white/80 px-5 py-3 text-sm font-semibold text-ink-700" href={resolve('/auth/sign-in?redirectTo=/account')}>
 						Sign in
 					</a>
 				{/if}
+				<a class="rounded-full border border-ink-950/10 bg-white/80 px-5 py-3 text-sm font-semibold text-ink-700" href={resolve('/pricing')}>
+					View pricing
+				</a>
 			</div>
 		</div>
 
@@ -93,7 +101,7 @@ const workflows = [
 		<div class="rounded-[1.75rem] border border-ink-950/10 bg-white/80 p-7 shadow-[0_24px_80px_-56px_rgba(18,36,40,0.6)] backdrop-blur">
 			<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Locked stack</p>
 			<ul class="mt-5 grid gap-3 text-sm text-ink-900 sm:grid-cols-2">
-				{#each stack as item}
+				{#each stack as item (item)}
 					<li class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-3">{item}</li>
 				{/each}
 			</ul>
@@ -102,7 +110,7 @@ const workflows = [
 		<div class="rounded-[1.75rem] border border-ink-950/10 bg-white/80 p-7 shadow-[0_24px_80px_-56px_rgba(18,36,40,0.6)] backdrop-blur">
 			<p class="text-sm uppercase tracking-[0.28em] text-terracotta-500">Planning coverage</p>
 			<div class="mt-5 grid gap-3 text-sm text-ink-900 sm:grid-cols-2">
-				{#each epics as epic}
+				{#each epics as epic (epic)}
 					<div class="rounded-2xl border border-ink-950/8 bg-white px-4 py-3">{epic}</div>
 				{/each}
 			</div>
@@ -110,7 +118,7 @@ const workflows = [
 	</section>
 
 	<section class="mt-8 grid gap-6 lg:grid-cols-3">
-		{#each workflows as workflow}
+		{#each workflows as workflow (workflow.name)}
 			<div class="rounded-[1.75rem] border border-dashed border-ink-950/15 bg-white/65 p-6 backdrop-blur">
 				<p class="font-display text-2xl text-ink-950">{workflow.name}</p>
 				<p class="mt-3 text-sm leading-7 text-ink-700">{workflow.description}</p>

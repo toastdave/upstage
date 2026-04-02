@@ -36,6 +36,14 @@ export type BillingPlanSnapshot = {
 	slug: string
 }
 
+export type PricingPlanSnapshot = BillingPlanSnapshot & {
+	annualPriceCents: number | null
+	highResolutionExports: boolean
+	maxProjects: number | null
+	maxTeamMembers: number | null
+	monthlyPriceCents: number
+}
+
 export type BillingLedgerEntry = {
 	amount: number
 	balanceAfter: number | null
@@ -120,6 +128,24 @@ async function loadFreePlanSnapshot(executor: BillingReader) {
 		name: freePlan.name,
 		slug: freePlan.slug,
 	} satisfies BillingPlanSnapshot
+}
+
+function readFeatureFlagNumber(featureFlags: unknown, key: 'maxProjects' | 'maxTeamMembers') {
+	if (!featureFlags || typeof featureFlags !== 'object') {
+		return null
+	}
+
+	const value = (featureFlags as Record<string, unknown>)[key]
+
+	return typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : null
+}
+
+function readFeatureFlagBoolean(featureFlags: unknown, key: 'highResolutionExports') {
+	if (!featureFlags || typeof featureFlags !== 'object') {
+		return false
+	}
+
+	return (featureFlags as Record<string, unknown>)[key] === true
 }
 
 async function loadLatestEntitlementRecord(executor: BillingReader, userId: string) {
@@ -279,6 +305,32 @@ export async function loadRecentBillingEventsForUser(userId: string, limit = 10)
 			processedAt: event.processedAt,
 			providerEventId: event.providerEventId,
 		})) satisfies BillingEventSnapshot[]
+}
+
+export async function loadPricingPlans(): Promise<PricingPlanSnapshot[]> {
+	const plans = await db
+		.select({
+			annualPriceCents: plan.annualPriceCents,
+			featureFlags: plan.featureFlags,
+			id: plan.id,
+			monthlyPriceCents: plan.monthlyPriceCents,
+			name: plan.name,
+			slug: plan.slug,
+		})
+		.from(plan)
+		.orderBy(plan.monthlyPriceCents, plan.name)
+
+	return plans.map((entry) => ({
+		annualPriceCents: entry.annualPriceCents,
+		highResolutionExports: readFeatureFlagBoolean(entry.featureFlags, 'highResolutionExports'),
+		id: entry.id,
+		includedCredits: getIncludedCreditsFromFeatureFlags(entry.featureFlags),
+		maxProjects: readFeatureFlagNumber(entry.featureFlags, 'maxProjects'),
+		maxTeamMembers: readFeatureFlagNumber(entry.featureFlags, 'maxTeamMembers'),
+		monthlyPriceCents: entry.monthlyPriceCents,
+		name: entry.name,
+		slug: entry.slug,
+	}))
 }
 
 export async function loadUserBillingSnapshot(
