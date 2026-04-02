@@ -42,6 +42,7 @@ Monetize Upstage with prepaid credits and subscription tiers while protecting ma
 - The app now grants starter credits from the active plan, shows recent ledger activity in the workspace, and exposes live credit balance on project detail pages.
 - Generation acceptance now deducts credits immediately, failed runs issue compensating refunds, and insufficient-balance runs are blocked server-side before execution begins.
 - Queued generation cancellations now issue compensating refunds before provider execution begins, so withdrawn runs stay balance-neutral and traceable.
+- Deferred generation processing now preserves the original job billing metadata while queued runs are claimed through the internal runner path.
 - Account pages now expose Polar sandbox checkout and customer-portal entrypoints, and the repo includes a validated webhook endpoint plus environment scaffolding for sandbox testing.
 - Billing loads now attempt to sync local entitlements from Polar customer state using the Upstage user ID as the external customer identifier.
 - The workspace now has a dedicated billing page with ledger history, sandbox readiness checks, webhook endpoint guidance, and recent user-scoped Polar event audit entries.

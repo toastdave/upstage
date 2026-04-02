@@ -2,6 +2,8 @@ import { dev } from '$app/environment'
 import { env } from '$env/dynamic/private'
 import type { GenerationCapability, GenerationProviderRoute } from './types'
 
+export type GenerationProcessingMode = 'inline' | 'deferred'
+
 function coalesce(...values: Array<string | undefined>) {
 	return values.find((value) => value && value.trim().length > 0)?.trim()
 }
@@ -14,13 +16,21 @@ function parseBoolean(value: string | undefined, fallback: boolean) {
 	return value === 'true'
 }
 
+function parseGenerationProcessingMode(value: string | undefined): GenerationProcessingMode {
+	return value === 'deferred' ? 'deferred' : 'inline'
+}
+
 export function getAiRuntimeConfig() {
 	const executionMode = coalesce(env.AI_EXECUTION_MODE, process.env.AI_EXECUTION_MODE)
 	const localRouteEnabled = executionMode ? executionMode === 'local' : dev
 
 	return {
 		executionMode: localRouteEnabled ? 'local' : 'production',
+		generationProcessingMode: parseGenerationProcessingMode(
+			coalesce(env.AI_GENERATION_PROCESSING_MODE, process.env.AI_GENERATION_PROCESSING_MODE)
+		),
 		gatewayApiKey: coalesce(env.AI_GATEWAY_API_KEY, process.env.AI_GATEWAY_API_KEY),
+		jobRunnerToken: coalesce(env.AI_JOB_RUNNER_TOKEN, process.env.AI_JOB_RUNNER_TOKEN),
 		localAnalysisModel:
 			coalesce(env.AI_LOCAL_ANALYSIS_MODEL, process.env.AI_LOCAL_ANALYSIS_MODEL) ?? 'gemma3',
 		localBaseUrl:
@@ -37,6 +47,14 @@ export function getAiRuntimeConfig() {
 			'google/gemini-3-pro-image-preview',
 		fallbackGatewayModel: coalesce(env.AI_FALLBACK_MODEL, process.env.AI_FALLBACK_MODEL),
 	}
+}
+
+export function getGenerationProcessingMode() {
+	return getAiRuntimeConfig().generationProcessingMode
+}
+
+export function getGenerationJobRunnerToken() {
+	return getAiRuntimeConfig().jobRunnerToken ?? null
 }
 
 export function getGenerationRoute(): GenerationProviderRoute {

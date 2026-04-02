@@ -163,6 +163,10 @@ function buildGenerationResultMessage(
 		}
 	}
 
+	if (result.status === 'queued') {
+		return 'Generation queued. It will start when the generation worker claims the job. Follow the timeline below for status updates.'
+	}
+
 	if (result.status === 'cancelled') {
 		return 'This concept run was canceled before provider execution began. Credits were restored automatically.'
 	}

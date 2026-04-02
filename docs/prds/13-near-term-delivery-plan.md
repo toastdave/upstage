@@ -107,7 +107,8 @@ Current status:
 - Failure metadata now records retry eligibility and coarse failure categories in job history.
 - Project pages now expose queue-time, run-time, total lifecycle, and refund diagnostics directly in the job timeline.
 - Queued runs can now be canceled before provider execution starts, with automatic credit restoration when cancellation succeeds.
-- The remaining work in this tranche is to move execution fully off the request path and carry the new cancellation and diagnostics model into async workers.
+- The app now supports a deferred processing mode plus an internal job-runner endpoint so queued jobs can be claimed outside the request path when needed.
+- The remaining work in this tranche is to replace the internal runner path with a dedicated async worker and carry the new cancellation and diagnostics model into worker leases and heartbeats.
 - This is now the recommended next implementation focus before expanding gallery complexity or production billing scope.
 
 ### 4. Credits and billing enforcement

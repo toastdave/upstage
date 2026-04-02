@@ -1,9 +1,12 @@
+import { formatProjectType } from '$lib/projects'
 import {
 	getConfiguredGenerationModel,
 	getGenerationCapabilities,
+	getGenerationProcessingMode,
 	getGenerationRoute,
 } from '$lib/server/ai/config'
-import { executeImageGeneration } from '$lib/server/ai/index'
+import { executeImageGenerationForRoute } from '$lib/server/ai/index'
+import type { GenerationProviderRoute } from '$lib/server/ai/types'
 import {
 	buildGenerationChargeDescription,
 	buildGenerationRefundDescription,
@@ -50,6 +53,38 @@ export type ExecuteProjectGenerationResult = {
 	retryAttempt: number
 	status: 'queued' | 'processing' | 'succeeded' | 'failed' | 'cancelled'
 	trigger: GenerationTrigger
+}
+
+type JobProcessingMode = 'request' | 'worker'
+
+type ProcessQueuedGenerationJobResult = {
+	error: string | null
+	result: ExecuteProjectGenerationResult
+}
+
+type GenerationExecutionSummary = Pick<
+	ExecuteProjectGenerationResult,
+	'jobId' | 'retryAttempt' | 'status' | 'trigger'
+>
+
+type ProcessableGenerationJobRecord = {
+	aspectRatio: string
+	createdAt: Date
+	id: string
+	model: string
+	ownerUserId: string
+	projectTitle: string
+	prompt: string
+	projectSlug: string
+	projectStyleIntent: string | null
+	projectType: string
+	provider: GenerationProviderRoute
+	requestMetadata: unknown
+	responseMetadata: unknown
+	sourceAssetMimeType: string
+	sourceAssetStorageKey: string
+	status: ExecuteProjectGenerationResult['status']
+	styleLabel: string | null
 }
 
 export async function loadProjectGenerationState(projectId: string) {
@@ -215,6 +250,412 @@ function buildCancellationResponseMetadata(options: {
 	} satisfies Record<string, unknown>
 }
 
+function buildExecutionSummary(
+	job: Pick<ProcessableGenerationJobRecord, 'id' | 'requestMetadata' | 'status'>
+): GenerationExecutionSummary {
+	const submission = getGenerationSubmissionMetadata(job.requestMetadata)
+
+	return {
+		jobId: job.id,
+		retryAttempt: submission.retryAttempt ?? 1,
+		status: job.status,
+		trigger: submission.trigger ?? 'manual',
+	}
+}
+
+function getStoredRoomBrief(requestMetadata: unknown) {
+	if (!requestMetadata || typeof requestMetadata !== 'object') {
+		return null
+	}
+
+	const roomBrief = 'roomBrief' in requestMetadata ? requestMetadata.roomBrief : null
+
+	return roomBrief && typeof roomBrief === 'object' ? (roomBrief as Record<string, unknown>) : null
+}
+
+function getStoredWorkflowLabel(roomBrief: Record<string, unknown> | null, projectType: string) {
+	return typeof roomBrief?.intent === 'string' && roomBrief.intent.length > 0
+		? roomBrief.intent
+		: formatProjectType(projectType)
+}
+
+function getStoredPresetName(roomBrief: Record<string, unknown> | null, styleLabel: string | null) {
+	if (typeof roomBrief?.preset === 'string' && roomBrief.preset.length > 0) {
+		return roomBrief.preset
+	}
+
+	return styleLabel ?? 'Generated concept'
+}
+
+async function loadProcessableGenerationJob(jobId: string) {
+	const [jobRecord] = await db
+		.select({
+			aspectRatio: generationJob.aspectRatio,
+			createdAt: generationJob.createdAt,
+			id: generationJob.id,
+			model: generationJob.model,
+			ownerUserId: project.ownerUserId,
+			projectSlug: project.slug,
+			projectStyleIntent: project.styleIntent,
+			projectTitle: project.title,
+			projectType: project.projectType,
+			prompt: generationJob.prompt,
+			provider: generationJob.provider,
+			requestMetadata: generationJob.requestMetadata,
+			responseMetadata: generationJob.responseMetadata,
+			sourceAssetMimeType: sourceAsset.mimeType,
+			sourceAssetStorageKey: sourceAsset.storageKey,
+			status: generationJob.status,
+			styleLabel: generationJob.styleLabel,
+		})
+		.from(generationJob)
+		.innerJoin(project, eq(project.id, generationJob.projectId))
+		.innerJoin(sourceAsset, eq(sourceAsset.id, generationJob.sourceAssetId))
+		.where(eq(generationJob.id, jobId))
+		.limit(1)
+
+	if (!jobRecord) {
+		throw new Error('Generation job not found')
+	}
+
+	return {
+		...jobRecord,
+		provider: jobRecord.provider as GenerationProviderRoute,
+	} satisfies ProcessableGenerationJobRecord
+}
+
+async function loadGenerationExecutionSummary(jobId: string): Promise<GenerationExecutionSummary> {
+	const jobRecord = await loadProcessableGenerationJob(jobId)
+
+	return buildExecutionSummary(jobRecord)
+}
+
+async function claimQueuedGenerationJob(options: {
+	job: ProcessableGenerationJobRecord
+	processingMode: JobProcessingMode
+}) {
+	const acceptedAt = getGenerationExecutionMetadata(options.job.responseMetadata).acceptedAt
+	const acceptedAtMs = acceptedAt ? Date.parse(acceptedAt) : options.job.createdAt.getTime()
+	const processingStartedAt = new Date()
+	const queueDurationMs =
+		processingStartedAt.getTime() -
+		(Number.isFinite(acceptedAtMs) ? acceptedAtMs : options.job.createdAt.getTime())
+	const persistedResponseMetadata =
+		options.job.responseMetadata && typeof options.job.responseMetadata === 'object'
+			? (options.job.responseMetadata as Record<string, unknown>)
+			: {}
+
+	const [claimedJob] = await db
+		.update(generationJob)
+		.set({
+			startedAt: processingStartedAt,
+			status: 'processing',
+			updatedAt: processingStartedAt,
+			responseMetadata: updateExecutionMetadata(persistedResponseMetadata, {
+				processingMode: options.processingMode,
+				queueDurationMs,
+				startedAt: processingStartedAt.toISOString(),
+			}),
+		})
+		.where(and(eq(generationJob.id, options.job.id), eq(generationJob.status, 'queued')))
+		.returning({ id: generationJob.id })
+
+	return claimedJob
+		? {
+				acceptedAtMs:
+					Number.isFinite(acceptedAtMs) && acceptedAtMs > 0
+						? acceptedAtMs
+						: options.job.createdAt.getTime(),
+				persistedResponseMetadata,
+				processingStartedAt,
+				queueDurationMs,
+			}
+		: null
+}
+
+async function runGenerationJob(options: {
+	acceptedAtMs: number
+	job: ProcessableGenerationJobRecord
+	persistedResponseMetadata: Record<string, unknown>
+	processingMode: JobProcessingMode
+	processingStartedAt: Date
+	queueDurationMs: number
+}): Promise<ExecuteProjectGenerationResult> {
+	const roomBrief = getStoredRoomBrief(options.job.requestMetadata)
+
+	if (!roomBrief) {
+		throw new Error('Stored room brief is missing for this generation job.')
+	}
+
+	const submission = getGenerationSubmissionMetadata(options.job.requestMetadata)
+	const sourceObject = await getStoredObject(options.job.sourceAssetStorageKey)
+
+	if (!sourceObject.Body) {
+		throw new Error('Source image contents are missing from storage')
+	}
+
+	const sourceBuffer = new Uint8Array(await sourceObject.Body.transformToByteArray())
+	const executionResult = await executeImageGenerationForRoute(options.job.provider, {
+		additionalInstructions: submission.additionalInstructions,
+		aspectRatio: options.job.aspectRatio,
+		compiledPrompt: options.job.prompt,
+		jobId: options.job.id,
+		presetName: getStoredPresetName(roomBrief, options.job.styleLabel),
+		projectSlug: options.job.projectSlug,
+		protectedElements:
+			typeof roomBrief.protectedElements === 'string' ? roomBrief.protectedElements : null,
+		requestedCount: 1,
+		sourceImage: {
+			data: sourceBuffer,
+			mimeType: options.job.sourceAssetMimeType,
+			storageKey: options.job.sourceAssetStorageKey,
+		},
+		styleIntent: options.job.projectStyleIntent,
+		userId: options.job.ownerUserId,
+		workflowLabel: getStoredWorkflowLabel(roomBrief, options.job.projectType),
+		workflowType: options.job.projectType,
+		roomBrief,
+	})
+
+	for (const image of executionResult.images) {
+		const storageKey = buildGenerationAssetStorageKey(
+			options.job.projectSlug,
+			options.job.id,
+			image.sortOrder,
+			image.mimeType
+		)
+
+		await uploadStoredObject({
+			body: image.data,
+			cacheControl: 'private, max-age=3600',
+			contentType: image.mimeType,
+			storageKey,
+		})
+
+		await db.insert(generationImage).values({
+			jobId: options.job.id,
+			storageKey,
+			url: buildStoredMediaUrl(storageKey),
+			mimeType: image.mimeType,
+			revisedPrompt: image.revisedPrompt ?? null,
+			seed: image.seed ?? null,
+			width: image.width ?? null,
+			height: image.height ?? null,
+			sortOrder: image.sortOrder,
+		})
+	}
+
+	const completedAt = new Date()
+	const runDurationMs = completedAt.getTime() - options.processingStartedAt.getTime()
+	const totalDurationMs = completedAt.getTime() - options.acceptedAtMs
+
+	await db
+		.update(generationJob)
+		.set({
+			provider: executionResult.providerRoute,
+			model: executionResult.model,
+			providerGenerationId: executionResult.providerGenerationId ?? null,
+			requestMetadata: {
+				...(options.job.requestMetadata as Record<string, unknown>),
+				providerRequest: executionResult.requestMetadata,
+			},
+			responseMetadata: {
+				...executionResult.responseMetadata,
+				billing: getGenerationBillingMetadata(options.job.responseMetadata),
+				execution: {
+					...(options.persistedResponseMetadata.execution as Record<string, unknown>),
+					completedAt: completedAt.toISOString(),
+					imageCount: executionResult.images.length,
+					processingMode: options.processingMode,
+					queueDurationMs: options.queueDurationMs,
+					runDurationMs,
+					startedAt: options.processingStartedAt.toISOString(),
+					totalDurationMs,
+				},
+				warnings: executionResult.warnings ?? [],
+			},
+			status: 'succeeded',
+			completedAt,
+			updatedAt: completedAt,
+		})
+		.where(eq(generationJob.id, options.job.id))
+
+	const summary = buildExecutionSummary({
+		id: options.job.id,
+		requestMetadata: options.job.requestMetadata,
+		status: 'succeeded',
+	})
+
+	return {
+		jobId: summary.jobId,
+		outcome: 'created',
+		retryAttempt: summary.retryAttempt,
+		status: summary.status,
+		trigger: summary.trigger,
+	}
+}
+
+export async function processQueuedGenerationJob(options: {
+	jobId: string
+	processingMode?: JobProcessingMode
+}): Promise<ExecuteProjectGenerationResult> {
+	const processingMode = options.processingMode ?? 'worker'
+	const job = await loadProcessableGenerationJob(options.jobId)
+	const summary = buildExecutionSummary(job)
+
+	if (job.status !== 'queued') {
+		return {
+			jobId: summary.jobId,
+			outcome: 'created',
+			retryAttempt: summary.retryAttempt,
+			status: summary.status,
+			trigger: summary.trigger,
+		}
+	}
+
+	const claim = await claimQueuedGenerationJob({ job, processingMode })
+
+	if (!claim) {
+		const current = await loadGenerationExecutionSummary(options.jobId)
+
+		return {
+			jobId: current.jobId,
+			outcome: 'created',
+			retryAttempt: current.retryAttempt,
+			status: current.status,
+			trigger: current.trigger,
+		}
+	}
+
+	try {
+		return await runGenerationJob({
+			acceptedAtMs: claim.acceptedAtMs,
+			job,
+			persistedResponseMetadata: claim.persistedResponseMetadata,
+			processingMode,
+			processingStartedAt: claim.processingStartedAt,
+			queueDurationMs: claim.queueDurationMs,
+		})
+	} catch (error) {
+		const failure = classifyGenerationFailure(error)
+		const completedAt = new Date()
+		const runDurationMs = completedAt.getTime() - claim.processingStartedAt.getTime()
+		const totalDurationMs = completedAt.getTime() - claim.acceptedAtMs
+		const billingMetadata = getGenerationBillingMetadata(job.responseMetadata)
+		const refundReferenceId = billingMetadata.refundReferenceId ?? `generation:${job.id}:refund`
+
+		await db.transaction(async (tx) => {
+			const [existingRefund] = await tx
+				.select({ id: creditLedger.id })
+				.from(creditLedger)
+				.where(
+					and(
+						eq(creditLedger.referenceId, refundReferenceId),
+						eq(creditLedger.userId, job.ownerUserId)
+					)
+				)
+				.limit(1)
+
+			let refundedCredits = 0
+			let balanceAfterRefund: number | null = null
+
+			if (!existingRefund) {
+				const creditBalance = await getCreditBalance(tx, job.ownerUserId)
+				refundedCredits = billingMetadata.chargedCredits ?? 0
+				balanceAfterRefund = creditBalance + refundedCredits
+
+				if (refundedCredits > 0) {
+					await tx.insert(creditLedger).values({
+						amount: refundedCredits,
+						balanceAfter: balanceAfterRefund,
+						description: buildGenerationRefundDescription(job.projectTitle),
+						entryType: 'refund',
+						referenceId: refundReferenceId,
+						userId: job.ownerUserId,
+					})
+				}
+			}
+
+			await tx
+				.update(generationJob)
+				.set({
+					completedAt,
+					errorMessage: failure.message,
+					responseMetadata: {
+						...updateBillingMetadata(claim.persistedResponseMetadata, {
+							balanceAfterRefund,
+							refundReferenceId,
+							refundedCredits,
+						}),
+						execution: {
+							...(claim.persistedResponseMetadata.execution as Record<string, unknown>),
+							completedAt: completedAt.toISOString(),
+							processingMode,
+							queueDurationMs: claim.queueDurationMs,
+							runDurationMs,
+							startedAt: claim.processingStartedAt.toISOString(),
+							totalDurationMs,
+						},
+						failure: {
+							...failure,
+							failedAt: completedAt.toISOString(),
+						},
+					},
+					status: 'failed',
+					updatedAt: completedAt,
+				})
+				.where(eq(generationJob.id, job.id))
+		})
+
+		throw error
+	}
+}
+
+export async function runQueuedGenerationJob(options: {
+	jobId: string
+	processingMode?: JobProcessingMode
+}): Promise<ProcessQueuedGenerationJobResult> {
+	try {
+		return {
+			error: null,
+			result: await processQueuedGenerationJob(options),
+		}
+	} catch (error) {
+		const result = await loadGenerationExecutionSummary(options.jobId)
+
+		return {
+			error: error instanceof Error ? error.message : 'Generation processing failed unexpectedly.',
+			result: {
+				jobId: result.jobId,
+				outcome: 'created',
+				retryAttempt: result.retryAttempt,
+				status: result.status,
+				trigger: result.trigger,
+			},
+		}
+	}
+}
+
+export async function processNextQueuedGenerationJob(options?: {
+	processingMode?: JobProcessingMode
+}): Promise<ProcessQueuedGenerationJobResult | null> {
+	const [queuedJob] = await db
+		.select({ id: generationJob.id })
+		.from(generationJob)
+		.where(eq(generationJob.status, 'queued'))
+		.orderBy(generationJob.createdAt)
+		.limit(1)
+
+	if (!queuedJob) {
+		return null
+	}
+
+	return runQueuedGenerationJob({
+		jobId: queuedJob.id,
+		processingMode: options?.processingMode,
+	})
+}
+
 export async function executeProjectGeneration(options: {
 	additionalInstructions: string | null
 	aspectRatio: string
@@ -291,9 +732,7 @@ export async function executeProjectGeneration(options: {
 	})
 	const createdJobId = crypto.randomUUID()
 	const chargeReferenceId = `generation:${createdJobId}:charge`
-	const refundReferenceId = `generation:${createdJobId}:refund`
 	const projectTitle = projectRecord.title
-	let balanceAfterCharge: number | null = null
 	let retryAttempt = 1
 	let createdJob: { id: string } | undefined
 	const acceptedAt = new Date()
@@ -396,7 +835,6 @@ export async function executeProjectGeneration(options: {
 					retryAttempt,
 				},
 			} satisfies Record<string, unknown>
-			balanceAfterCharge = creditBalance - generationPlan.creditEstimate
 			;[createdJob] = await tx
 				.insert(generationJob)
 				.values({
@@ -473,231 +911,20 @@ export async function executeProjectGeneration(options: {
 
 	const acceptedJobId = createdJob.id
 
-	const persistedRequestMetadata = {
-		...baseRequestMetadata,
-		submission: {
-			...(baseRequestMetadata.submission as Record<string, unknown>),
-			retryAttempt,
-		},
-	} satisfies Record<string, unknown>
-	const persistedResponseMetadata = {
-		...baseResponseMetadata,
-		billing: {
-			...(baseResponseMetadata.billing as Record<string, unknown>),
-			balanceAfterCharge,
-		},
-		execution: {
-			...(baseResponseMetadata.execution as Record<string, unknown>),
-			retryAttempt,
-		},
-	} satisfies Record<string, unknown>
-	const acceptedAtMs = acceptedAt.getTime()
-
-	const processingStartedAt = new Date()
-	const queueDurationMs = processingStartedAt.getTime() - acceptedAtMs
-
-	const [claimedJob] = await db
-		.update(generationJob)
-		.set({
-			startedAt: processingStartedAt,
-			status: 'processing',
-			updatedAt: processingStartedAt,
-			responseMetadata: updateExecutionMetadata(persistedResponseMetadata, {
-				processingMode: 'request',
-				queueDurationMs,
-				startedAt: processingStartedAt.toISOString(),
-			}),
-		})
-		.where(and(eq(generationJob.id, acceptedJobId), eq(generationJob.status, 'queued')))
-		.returning({ id: generationJob.id })
-
-	if (!claimedJob) {
-		const [currentJob] = await db
-			.select({ status: generationJob.status })
-			.from(generationJob)
-			.where(eq(generationJob.id, acceptedJobId))
-			.limit(1)
-
+	if (getGenerationProcessingMode() === 'deferred') {
 		return {
 			jobId: acceptedJobId,
 			outcome: 'created',
 			retryAttempt,
-			status: currentJob?.status ?? 'cancelled',
+			status: 'queued',
 			trigger,
 		}
 	}
 
-	try {
-		const sourceObject = await getStoredObject(sourceAssetRecord.storageKey)
-
-		if (!sourceObject.Body) {
-			throw new Error('Source image contents are missing from storage')
-		}
-
-		const sourceBuffer = new Uint8Array(await sourceObject.Body.transformToByteArray())
-		const executionResult = await executeImageGeneration({
-			additionalInstructions: normalizedAdditionalInstructions,
-			aspectRatio: options.aspectRatio,
-			compiledPrompt: generationPlan.compiledPrompt,
-			jobId: acceptedJobId,
-			presetName: presetRecord.name,
-			projectSlug: projectRecord.slug,
-			protectedElements:
-				typeof generationPlan.roomBrief.protectedElements === 'string'
-					? generationPlan.roomBrief.protectedElements
-					: null,
-			requestedCount: 1,
-			sourceImage: {
-				data: sourceBuffer,
-				mimeType: sourceAssetRecord.mimeType,
-				storageKey: sourceAssetRecord.storageKey,
-			},
-			styleIntent: projectRecord.styleIntent,
-			userId: options.userId,
-			workflowLabel: generationPlan.workflowLabel,
-			workflowType: projectRecord.projectType,
-			roomBrief: generationPlan.roomBrief,
-		})
-
-		for (const image of executionResult.images) {
-			const storageKey = buildGenerationAssetStorageKey(
-				projectRecord.slug,
-				acceptedJobId,
-				image.sortOrder,
-				image.mimeType
-			)
-
-			await uploadStoredObject({
-				body: image.data,
-				cacheControl: 'private, max-age=3600',
-				contentType: image.mimeType,
-				storageKey,
-			})
-
-			await db.insert(generationImage).values({
-				jobId: acceptedJobId,
-				storageKey,
-				url: buildStoredMediaUrl(storageKey),
-				mimeType: image.mimeType,
-				revisedPrompt: image.revisedPrompt ?? null,
-				seed: image.seed ?? null,
-				width: image.width ?? null,
-				height: image.height ?? null,
-				sortOrder: image.sortOrder,
-			})
-		}
-
-		const completedAt = new Date()
-		const runDurationMs = completedAt.getTime() - processingStartedAt.getTime()
-		const totalDurationMs = completedAt.getTime() - acceptedAtMs
-
-		await db
-			.update(generationJob)
-			.set({
-				provider: executionResult.providerRoute,
-				model: executionResult.model,
-				providerGenerationId: executionResult.providerGenerationId ?? null,
-				requestMetadata: {
-					...persistedRequestMetadata,
-					providerRequest: executionResult.requestMetadata,
-				},
-				responseMetadata: {
-					...executionResult.responseMetadata,
-					billing: persistedResponseMetadata.billing,
-					execution: {
-						...(persistedResponseMetadata.execution as Record<string, unknown>),
-						completedAt: completedAt.toISOString(),
-						imageCount: executionResult.images.length,
-						processingMode: 'request',
-						queueDurationMs,
-						runDurationMs,
-						startedAt: processingStartedAt.toISOString(),
-						totalDurationMs,
-					},
-					warnings: executionResult.warnings ?? [],
-				},
-				status: 'succeeded',
-				completedAt,
-				updatedAt: completedAt,
-			})
-			.where(eq(generationJob.id, acceptedJobId))
-
-		return {
-			jobId: acceptedJobId,
-			outcome: 'created',
-			retryAttempt,
-			status: 'succeeded',
-			trigger,
-		}
-	} catch (error) {
-		const failure = classifyGenerationFailure(error)
-		const completedAt = new Date()
-		const runDurationMs = completedAt.getTime() - processingStartedAt.getTime()
-		const totalDurationMs = completedAt.getTime() - acceptedAtMs
-
-		await db.transaction(async (tx) => {
-			const [existingRefund] = await tx
-				.select({ id: creditLedger.id })
-				.from(creditLedger)
-				.where(
-					and(
-						eq(creditLedger.referenceId, refundReferenceId),
-						eq(creditLedger.userId, options.userId)
-					)
-				)
-				.limit(1)
-
-			let refundedCredits = 0
-			let balanceAfterRefund: number | null = null
-
-			if (!existingRefund) {
-				const creditBalance = await getCreditBalance(tx, options.userId)
-				refundedCredits = generationPlan.creditEstimate
-				balanceAfterRefund = creditBalance + generationPlan.creditEstimate
-
-				await tx.insert(creditLedger).values({
-					amount: generationPlan.creditEstimate,
-					balanceAfter: balanceAfterRefund,
-					description: buildGenerationRefundDescription(projectTitle),
-					entryType: 'refund',
-					referenceId: refundReferenceId,
-					userId: options.userId,
-				})
-			}
-
-			await tx
-				.update(generationJob)
-				.set({
-					completedAt,
-					errorMessage: failure.message,
-					responseMetadata: {
-						...updateBillingMetadata(persistedResponseMetadata, {
-							balanceAfterRefund,
-							refundReferenceId,
-							refundedCredits,
-						}),
-						execution: {
-							...(persistedResponseMetadata.execution as Record<string, unknown>),
-							completedAt: completedAt.toISOString(),
-							processingMode: 'request',
-							queueDurationMs,
-							runDurationMs,
-							startedAt: processingStartedAt.toISOString(),
-							totalDurationMs,
-						},
-						failure: {
-							...failure,
-							failedAt: completedAt.toISOString(),
-						},
-					},
-					status: 'failed',
-					updatedAt: completedAt,
-				})
-				.where(eq(generationJob.id, acceptedJobId))
-		})
-
-		throw error
-	}
+	return processQueuedGenerationJob({
+		jobId: acceptedJobId,
+		processingMode: 'request',
+	})
 }
 
 export async function cancelProjectGeneration(options: {

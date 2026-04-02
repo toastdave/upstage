@@ -49,12 +49,13 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 - Failed jobs can now be retried safely from the project detail page, with attempt metadata and failure classification persisted alongside each run.
 - Jobs now record queue, run, and total lifecycle timing so support diagnostics are visible from the project detail page without reading raw logs.
 - Queued jobs can now be canceled before provider execution begins, with compensating credit refunds recorded automatically when a queued run is withdrawn.
+- The orchestration layer now supports deferred processing mode plus an internal token-protected job-runner endpoint, so queued jobs can be claimed outside the request path while preserving the original provider route and stored job metadata.
 
 ## Remaining follow-up
 
 - This is still the recommended next engineering slice now that room-brief review, gallery review, retry-safe submissions, and initial credit enforcement are in place.
-- Move generation execution to a background worker when latency or retry volume grows.
-- Expand the current cancellation and diagnostic foundation into worker-aware operations once execution moves off the request path.
+- Move from the current internal runner endpoint to a dedicated background worker package when latency or retry volume grows.
+- Expand the current cancellation and diagnostic foundation into worker-aware operations with lease and heartbeat semantics once execution is fully detached.
 - Harden credit reservation and compensating ledger behavior for async execution once billing enforcement is live.
 - Add provider-aware critique and rerank passes for future quality control.
 

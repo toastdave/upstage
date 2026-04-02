@@ -190,11 +190,19 @@ Use the full `https://` URL. This setup serves HTTPS on port `1201`; `http://` r
 
 - Local development defaults to `AI_EXECUTION_MODE=local`, which routes generation through Ollama.
 - Hosted environments should set `AI_EXECUTION_MODE=production`, which routes generation through Gemini via AI Gateway.
+- `AI_GENERATION_PROCESSING_MODE=inline` keeps generation on the request path; set it to `deferred` to leave jobs queued for the internal runner endpoint.
+- `AI_JOB_RUNNER_TOKEN` secures the internal queued-job runner endpoint when deferred processing is enabled.
 - `AI_LOCAL_ANALYSIS_MODEL` defaults to `gemma3`.
 - `AI_LOCAL_IMAGE_MODEL` defaults to `x/flux2-klein:4b`.
 - `AI_PRIMARY_MODEL` defaults to `google/gemini-3-pro-image-preview`.
 - `AI_FALLBACK_MODEL` can define a lower-cost hosted fallback such as `google/gemini-2.5-flash-image`.
 - Some Ollama image models have host-platform limits. If local image generation is unavailable, the app records a clear job failure and you can temporarily switch to hosted routing.
+
+Queued generation runner endpoint:
+
+- `POST /api/internal/generation-jobs/process`
+- Send `Authorization: Bearer $AI_JOB_RUNNER_TOKEN`
+- Optional JSON body: `{"jobId":"<job-id>"}` to process one job or `{"limit":5}` to drain several queued jobs in order
 
 ## Billing setup
 
