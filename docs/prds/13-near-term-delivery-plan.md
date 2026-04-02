@@ -15,7 +15,13 @@ Turn the current foundation into a product-ready core loop by delivering guided 
 - Foundation, auth, project creation, and source-photo management are working.
 - Generation requests already persist durable jobs, provider metadata, and output images.
 - The first room-brief slice is now in place: uploads create a draft brief, project pages allow structured review, and generation consumes the saved brief.
-- The main missing product layers are stronger provider-backed analysis quality, deliverable review, orchestration hardening, and billing enforcement.
+- The main remaining product layers are stronger provider-backed analysis quality, orchestration hardening, richer deliverable browsing, and full billing rollout maturity.
+
+## Current recommendation
+
+- With the first room-brief flow, gallery review surface, retry-safe submissions, and initial billing enforcement now shipped, the next engineering slice should focus on orchestration hardening.
+- Prioritize moving generation execution off the request path, defining cancellation rules, and exposing support-facing diagnostics before investing further in richer gallery UX or deeper billing rollout work.
+- This closes launch-risk across reliability, billing integrity, and support workflows while preserving the current guided product loop.
 
 ## Recommended defaults
 
@@ -100,6 +106,7 @@ Current status:
 - Initial hardening is shipped. Generation submissions now use deterministic idempotency keys, recent duplicate runs are deduplicated, failed jobs can be retried safely from the project page, and billing hooks now issue compensating refunds on failed runs.
 - Failure metadata now records retry eligibility and coarse failure categories in job history.
 - The remaining work in this tranche is to move execution off the request path, add cancellation rules, and expose stronger support-facing diagnostics.
+- This is now the recommended next implementation focus before expanding gallery complexity or production billing scope.
 
 ### 4. Credits and billing enforcement
 

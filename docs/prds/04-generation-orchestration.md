@@ -50,9 +50,10 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 
 ## Remaining follow-up
 
+- This is the recommended next engineering slice now that room-brief review, gallery review, retry-safe submissions, and initial credit enforcement are in place.
 - Move generation execution to a background worker when latency or retry volume grows.
 - Add explicit cancellation rules and operator-facing job diagnostics for support workflows.
-- Connect credit reservation and compensating ledger entries once billing enforcement is live.
+- Harden credit reservation and compensating ledger behavior for async execution once billing enforcement is live.
 - Add provider-aware critique and rerank passes for future quality control.
 
 ## Non-goals

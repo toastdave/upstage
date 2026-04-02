@@ -51,6 +51,7 @@ Monetize Upstage with prepaid credits and subscription tiers while protecting ma
 - Build fuller pricing and billing surfaces beyond the current workspace entrypoints.
 - Expand webhook fulfillment from customer-state syncing into richer purchase, renewal, and refund audit handling.
 - Add stronger concurrency protections around balance reservation once generation moves to async workers.
+- Treat async orchestration hardening as the dependency to close before production billing rollout.
 
 ## Non-goals
 
