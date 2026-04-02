@@ -1,3 +1,4 @@
+import { dev } from '$app/environment'
 import { env } from '$env/dynamic/private'
 import { getGenerationJobRunnerToken } from '$lib/server/ai/config'
 
@@ -10,6 +11,19 @@ export function getInternalApiToken() {
 		coalesce(env.UPSTAGE_INTERNAL_API_TOKEN, process.env.UPSTAGE_INTERNAL_API_TOKEN) ??
 		getGenerationJobRunnerToken()
 	)
+}
+
+export function isOperationsConsoleEnabled() {
+	const configured = coalesce(
+		env.UPSTAGE_ENABLE_OPERATIONS_UI,
+		process.env.UPSTAGE_ENABLE_OPERATIONS_UI
+	)
+
+	if (configured === null) {
+		return dev
+	}
+
+	return configured === 'true'
 }
 
 export function validateInternalApiAuthorization(request: Request) {

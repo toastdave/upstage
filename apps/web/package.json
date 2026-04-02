@@ -10,6 +10,8 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"worker": "svelte-kit sync && bun src/worker.ts",
+		"worker:once": "svelte-kit sync && bun src/worker.ts --once",
 		"lint": "biome check .",
 		"format": "biome format --write .",
 		"test": "bun test"

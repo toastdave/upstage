@@ -4,6 +4,14 @@ import type { GenerationCapability, GenerationProviderRoute } from './types'
 
 export type GenerationProcessingMode = 'inline' | 'deferred'
 
+export type GenerationWorkerRuntimeDefaults = {
+	batchSize: number
+	heartbeatIntervalSeconds: number
+	idleExitSeconds: number | null
+	leaseSeconds: number
+	pollIntervalSeconds: number
+}
+
 function coalesce(...values: Array<string | undefined>) {
 	return values.find((value) => value && value.trim().length > 0)?.trim()
 }
@@ -30,6 +38,16 @@ function parsePositiveInteger(value: string | undefined, fallback: number) {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+function parseNullablePositiveInteger(value: string | undefined) {
+	if (!value) {
+		return null
+	}
+
+	const parsed = Number.parseInt(value, 10)
+
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
 export function getAiRuntimeConfig() {
 	const executionMode = coalesce(env.AI_EXECUTION_MODE, process.env.AI_EXECUTION_MODE)
 	const localRouteEnabled = executionMode ? executionMode === 'local' : dev
@@ -49,6 +67,23 @@ export function getAiRuntimeConfig() {
 		),
 		generationProcessingMode: parseGenerationProcessingMode(
 			coalesce(env.AI_GENERATION_PROCESSING_MODE, process.env.AI_GENERATION_PROCESSING_MODE)
+		),
+		generationWorkerBatchSize: parsePositiveInteger(
+			coalesce(env.AI_GENERATION_WORKER_BATCH_SIZE, process.env.AI_GENERATION_WORKER_BATCH_SIZE),
+			1
+		),
+		generationWorkerIdleExitSeconds: parseNullablePositiveInteger(
+			coalesce(
+				env.AI_GENERATION_WORKER_IDLE_EXIT_SECONDS,
+				process.env.AI_GENERATION_WORKER_IDLE_EXIT_SECONDS
+			)
+		),
+		generationWorkerPollIntervalSeconds: parsePositiveInteger(
+			coalesce(
+				env.AI_GENERATION_WORKER_POLL_INTERVAL_SECONDS,
+				process.env.AI_GENERATION_WORKER_POLL_INTERVAL_SECONDS
+			),
+			10
 		),
 		gatewayApiKey: coalesce(env.AI_GATEWAY_API_KEY, process.env.AI_GATEWAY_API_KEY),
 		jobRunnerToken: coalesce(env.AI_JOB_RUNNER_TOKEN, process.env.AI_JOB_RUNNER_TOKEN),
@@ -80,6 +115,32 @@ export function getGenerationHeartbeatIntervalMs() {
 
 export function getGenerationLeaseDurationMs() {
 	return getAiRuntimeConfig().generationLeaseSeconds * 1000
+}
+
+export function getGenerationWorkerBatchSize() {
+	return getAiRuntimeConfig().generationWorkerBatchSize
+}
+
+export function getGenerationWorkerPollIntervalMs() {
+	return getAiRuntimeConfig().generationWorkerPollIntervalSeconds * 1000
+}
+
+export function getGenerationWorkerIdleExitMs() {
+	const idleExitSeconds = getAiRuntimeConfig().generationWorkerIdleExitSeconds
+
+	return idleExitSeconds ? idleExitSeconds * 1000 : null
+}
+
+export function getGenerationWorkerRuntimeDefaults(): GenerationWorkerRuntimeDefaults {
+	const config = getAiRuntimeConfig()
+
+	return {
+		batchSize: config.generationWorkerBatchSize,
+		heartbeatIntervalSeconds: config.generationHeartbeatIntervalSeconds,
+		idleExitSeconds: config.generationWorkerIdleExitSeconds,
+		leaseSeconds: config.generationLeaseSeconds,
+		pollIntervalSeconds: config.generationWorkerPollIntervalSeconds,
+	}
 }
 
 export function getGenerationJobRunnerToken() {

@@ -255,8 +255,20 @@ async function signOut() {
 
 					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
 						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Next milestone</p>
-						<p class="mt-2 leading-7">Polar sandbox checkout, portal handoff, and webhook ingestion are now wired. Add your sandbox keys and product ID, then validate the hosted flow end to end.</p>
+						<p class="mt-2 leading-7">Async generation now has a dedicated worker runtime and operations console. The next launch-risk work is richer billing fulfillment, gallery depth, and account polish.</p>
 					</div>
+
+					{#if data.operationsConsoleEnabled}
+						<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
+							<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Operations</p>
+							<p class="mt-2 leading-7">Open the internal operations console to inspect queued jobs, active worker leases, stalled runs, and recent failures while deferred processing is enabled.</p>
+							<div class="mt-4">
+								<a class="inline-flex rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm font-semibold text-ink-900" href="/account/ops">
+									Open operations console
+								</a>
+							</div>
+						</div>
+					{/if}
 
 					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
 						<div class="flex items-center justify-between gap-4">

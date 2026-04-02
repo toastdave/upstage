@@ -4,6 +4,7 @@ import adapter from 'svelte-adapter-bun'
 const config = {
 	kit: {
 		adapter: adapter(),
+		outDir: '.svelte-kit-opencode',
 	},
 	vitePlugin: {
 		dynamicCompileOptions: ({ filename }) =>

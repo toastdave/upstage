@@ -1364,6 +1364,135 @@ export async function cancelProjectGeneration(options: {
 	})
 }
 
+export async function cancelStalledGenerationJob(jobId: string) {
+	const [jobRecord] = await db
+		.select({
+			id: generationJob.id,
+			ownerUserId: project.ownerUserId,
+			projectSlug: project.slug,
+			responseMetadata: generationJob.responseMetadata,
+			status: generationJob.status,
+			title: project.title,
+		})
+		.from(generationJob)
+		.innerJoin(project, eq(project.id, generationJob.projectId))
+		.where(eq(generationJob.id, jobId))
+		.limit(1)
+
+	if (!jobRecord) {
+		throw new Error('Generation job not found')
+	}
+
+	if (jobRecord.status === 'cancelled') {
+		return {
+			jobId: jobRecord.id,
+			projectSlug: jobRecord.projectSlug,
+			reason: 'already_cancelled' as const,
+			status: 'cancelled' as const,
+		}
+	}
+
+	if (
+		jobRecord.status !== 'processing' ||
+		!hasExpiredGenerationWorkerLease(jobRecord.responseMetadata)
+	) {
+		throw new Error('Only worker runs with expired leases can be canceled from operations.')
+	}
+
+	const persistedResponseMetadata =
+		jobRecord.responseMetadata && typeof jobRecord.responseMetadata === 'object'
+			? (jobRecord.responseMetadata as Record<string, unknown>)
+			: {}
+	const refundReferenceId =
+		getGenerationBillingMetadata(jobRecord.responseMetadata).refundReferenceId ??
+		`generation:${jobRecord.id}:refund`
+	const refundedCredits =
+		getGenerationBillingMetadata(jobRecord.responseMetadata).chargedCredits ?? 0
+	const cancelledAt = new Date()
+
+	return db.transaction(async (tx) => {
+		const [claimedCancellation] = await tx
+			.update(generationJob)
+			.set({
+				completedAt: cancelledAt,
+				errorMessage: 'Generation was canceled after the deferred worker lease expired.',
+				status: 'cancelled',
+				updatedAt: cancelledAt,
+			})
+			.where(and(eq(generationJob.id, jobRecord.id), buildExpiredWorkerLeaseCondition()))
+			.returning({ id: generationJob.id })
+
+		if (!claimedCancellation) {
+			const [currentJob] = await tx
+				.select({ status: generationJob.status })
+				.from(generationJob)
+				.where(eq(generationJob.id, jobRecord.id))
+				.limit(1)
+
+			if (currentJob?.status === 'cancelled') {
+				return {
+					jobId: jobRecord.id,
+					projectSlug: jobRecord.projectSlug,
+					reason: 'already_cancelled' as const,
+					status: 'cancelled' as const,
+				}
+			}
+
+			throw new Error('Only worker runs with expired leases can be canceled from operations.')
+		}
+
+		const [existingRefund] = await tx
+			.select({ id: creditLedger.id })
+			.from(creditLedger)
+			.where(
+				and(
+					eq(creditLedger.referenceId, refundReferenceId),
+					eq(creditLedger.userId, jobRecord.ownerUserId)
+				)
+			)
+			.limit(1)
+
+		let creditedAmount = 0
+		let balanceAfterRefund: number | null = null
+
+		if (!existingRefund && refundedCredits > 0) {
+			const creditBalance = await getCreditBalance(tx, jobRecord.ownerUserId)
+			creditedAmount = refundedCredits
+			balanceAfterRefund = creditBalance + refundedCredits
+
+			await tx.insert(creditLedger).values({
+				amount: refundedCredits,
+				balanceAfter: balanceAfterRefund,
+				description: buildGenerationRefundDescription(jobRecord.title),
+				entryType: 'refund',
+				referenceId: refundReferenceId,
+				userId: jobRecord.ownerUserId,
+			})
+		}
+
+		await tx
+			.update(generationJob)
+			.set({
+				responseMetadata: buildCancellationResponseMetadata({
+					balanceAfterRefund,
+					cancelledAt,
+					cancellationReason: 'expired_worker_lease',
+					persistedResponseMetadata,
+					refundReferenceId,
+					refundedCredits: creditedAmount,
+				}),
+			})
+			.where(eq(generationJob.id, jobRecord.id))
+
+		return {
+			jobId: jobRecord.id,
+			projectSlug: jobRecord.projectSlug,
+			reason: 'expired_worker_lease' as const,
+			status: 'cancelled' as const,
+		}
+	})
+}
+
 export async function retryProjectGeneration(options: {
 	jobId: string
 	projectSlug: string

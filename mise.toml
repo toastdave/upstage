@@ -12,6 +12,16 @@ depends = ["install"]
 run = "bun run dev"
 description = "Start the SvelteKit app locally"
 
+[tasks.worker]
+depends = ["install"]
+run = "bun run worker"
+description = "Run the deferred generation worker"
+
+[tasks."worker:once"]
+depends = ["install"]
+run = "bun run worker:once"
+description = "Run one deferred worker pass"
+
 [tasks."dev:docker"]
 run = "docker compose up -d --build"
 description = "Start the fully containerized app detached"

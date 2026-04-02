@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private'
 import { type PolarServerMode, normalizePolarServerMode } from '$lib/server/polar-helpers'
-import { WebhookVerificationError, validateEvent } from '@polar-sh/sdk/webhooks'
+import { WebhookVerificationError, validateEvent } from '@polar-sh/sdk/webhooks.js'
 
 type PolarCheckoutPlan = 'pro'
 

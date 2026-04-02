@@ -193,13 +193,23 @@ Use the full `https://` URL. This setup serves HTTPS on port `1201`; `http://` r
 - `AI_GENERATION_PROCESSING_MODE=inline` keeps generation on the request path; set it to `deferred` to leave jobs queued for the internal runner endpoint.
 - `AI_JOB_RUNNER_TOKEN` secures the internal queued-job runner endpoint when deferred processing is enabled.
 - `UPSTAGE_INTERNAL_API_TOKEN` optionally provides one shared token for all internal operations endpoints; if omitted, internal APIs fall back to `AI_JOB_RUNNER_TOKEN`.
+- `UPSTAGE_ENABLE_OPERATIONS_UI=true` exposes the authenticated operations console in development so queued jobs, worker leases, and failures are visible without shell access.
 - `AI_GENERATION_LEASE_SECONDS` defines how long a deferred runner claim stays valid before it must be renewed.
 - `AI_GENERATION_HEARTBEAT_INTERVAL_SECONDS` controls how often deferred workers refresh heartbeat metadata while a job is processing.
+- `AI_GENERATION_WORKER_BATCH_SIZE` controls how many claimable jobs the dedicated worker processes before checking for new work again.
+- `AI_GENERATION_WORKER_POLL_INTERVAL_SECONDS` controls how long the dedicated worker sleeps between empty queue checks.
+- `AI_GENERATION_WORKER_IDLE_EXIT_SECONDS` optionally lets `bun run worker` exit after an idle period instead of polling forever.
 - `AI_LOCAL_ANALYSIS_MODEL` defaults to `gemma3`.
 - `AI_LOCAL_IMAGE_MODEL` defaults to `x/flux2-klein:4b`.
 - `AI_PRIMARY_MODEL` defaults to `google/gemini-3-pro-image-preview`.
 - `AI_FALLBACK_MODEL` can define a lower-cost hosted fallback such as `google/gemini-2.5-flash-image`.
 - Some Ollama image models have host-platform limits. If local image generation is unavailable, the app records a clear job failure and you can temporarily switch to hosted routing.
+
+Dedicated deferred worker commands:
+
+- `mise run worker` or `bun run worker` runs the background worker loop for deferred generation.
+- `mise run worker:once` or `bun run worker:once` processes one worker pass and exits, which is useful for recovery or smoke tests.
+- Optional worker flags: `--once`, `--worker-id=ops-a`, `--batch-size=5`, `--poll-seconds=10`, `--idle-exit-seconds=60`, `--lease-seconds=180`, `--heartbeat-seconds=20`.
 
 Queued generation runner endpoint:
 
@@ -209,12 +219,19 @@ Queued generation runner endpoint:
 - Optional runner diagnostics body fields: `{"runnerId":"worker-a","leaseSeconds":180,"heartbeatIntervalSeconds":20}`
 - You can also send `x-upstage-runner-id: worker-a` to stamp heartbeat metadata with a stable worker identity
 - The runner now reclaims worker-owned jobs whose lease has expired, so stalled deferred runs do not remain stuck in `processing` forever
+- The internal runner endpoint remains useful for manual recovery, but the dedicated worker command is now the preferred deferred-processing path.
 
 Internal health endpoint:
 
 - `GET /api/internal/health`
 - Send `Authorization: Bearer $UPSTAGE_INTERNAL_API_TOKEN` or `Authorization: Bearer $AI_JOB_RUNNER_TOKEN`
-- Returns app, database, storage, billing-config, and generation-queue health including queued-job counts and expired worker leases
+- Returns app, database, storage, billing-config, and generation-queue health including queued-job counts, expired worker leases, and worker runtime defaults
+
+Operations console:
+
+- `/account/ops`
+- Available in development by default, or in other environments when `UPSTAGE_ENABLE_OPERATIONS_UI=true`
+- Shows queued jobs, active worker leases, stalled worker runs, recent failures, and manual recovery controls
 
 ## Billing setup
 
@@ -247,6 +264,8 @@ Sandbox notes:
 
 - `mise run dev` - run the SvelteKit app locally with Bun
 - `mise run dev:docker` - run the full stack in Docker with hot reloading
+- `mise run worker` - run the deferred generation worker loop
+- `mise run worker:once` - run one deferred worker recovery pass
 - `mise run ai:pull:analysis` - pull the local Ollama analysis model
 - `mise run ai:pull:image` - pull the local Ollama image model
 - `mise run ai:logs` - follow Ollama logs

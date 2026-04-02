@@ -2,6 +2,7 @@ import {
 	getAiRuntimeConfig,
 	getGenerationProcessingMode,
 	getGenerationRoute,
+	getGenerationWorkerRuntimeDefaults,
 } from '$lib/server/ai/config'
 import { db } from '$lib/server/db'
 import { loadGenerationOperationsSnapshot } from '$lib/server/generation-jobs'
@@ -37,6 +38,7 @@ export const GET: RequestHandler = async ({ request }) => {
 	}
 
 	const runtime = getAiRuntimeConfig()
+	const workerDefaults = getGenerationWorkerRuntimeDefaults()
 	const polar = getPolarPublicConfig()
 	const [database, storage] = await Promise.all([checkDatabaseHealth(), checkStorageHealth()])
 
@@ -82,6 +84,7 @@ export const GET: RequestHandler = async ({ request }) => {
 					operationsError: generationOperationsError,
 					processingMode: getGenerationProcessingMode(),
 					route: getGenerationRoute(),
+					workerDefaults,
 					status:
 						database.status === 'ok' && !generationOperationsError ? 'ok' : ('degraded' as const),
 				},

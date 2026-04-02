@@ -1,5 +1,6 @@
 import { loadUserBillingSnapshot } from '$lib/server/billing'
 import { db } from '$lib/server/db'
+import { isOperationsConsoleEnabled } from '$lib/server/internal-api'
 import { createProjectSlug, normalizeOptionalText, parseProjectType } from '$lib/server/projects'
 import { fail, redirect } from '@sveltejs/kit'
 import { project, sourceAsset } from '@upstage/db/schema'
@@ -77,6 +78,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		billing,
 		billingNotice: getBillingNotice(url),
 		creditBalance: billing.creditBalance,
+		operationsConsoleEnabled: isOperationsConsoleEnabled(),
 		projectCount: projects.length,
 		projects,
 		session: locals.session,
