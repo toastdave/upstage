@@ -40,11 +40,14 @@ Ensure the MVP can be operated, debugged, and improved after launch without gues
 - Billing webhook intake now persists provider event identifiers plus pending-versus-processed state, and the billing page exposes recent user-scoped Polar events for sandbox validation.
 - Internal operations endpoints now expose authenticated health checks for the app, database, storage, billing configuration, and generation queue state.
 - Generation operations snapshots now surface queued counts, active worker counts, and expired worker leases so support can spot stuck async work without reading raw logs.
+- Deferred generation now has a dedicated worker runtime that emits structured worker-event logs for start, stop, processed jobs, and worker-side errors.
+- An authenticated operations console now gives support a browser-based view of queued jobs, active worker leases, stalled runs, recent failures, and manual queue recovery actions.
 
 ## Remaining follow-up
 
 - Add explicit structured logging, analytics events, and richer admin-friendly replay tooling.
 - Add deeper visibility into provider capability downgrade reasons and request-level recovery steps in the UI or internal tooling.
+- Add worker-health alerting, richer per-run replay controls, and safer multi-operator audit trails if the operations console graduates beyond development support use.
 
 ## Non-goals
 

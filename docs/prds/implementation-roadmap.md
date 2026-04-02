@@ -34,15 +34,16 @@ Current status:
 - Generation can now run in deferred mode through an internal token-protected queue runner while preserving the stored provider route for each job.
 - Deferred worker claims now publish runner identity plus lease and heartbeat metadata in job history.
 - Expired worker leases can now be reclaimed without leaving stale workers in control of final job writes, and stalled worker runs can be canceled safely from the project timeline.
-- Remaining work is focused on promoting that runner into a dedicated background worker, adding richer operator controls, billing enforcement, and more robust output handling.
-- The next major slice should center on orchestration hardening: async job processing, cancellation rules, and support-grade diagnostics that make the core loop trustworthy under paid usage.
+- Deferred generation now has a dedicated `bun run worker` runtime plus a browser-based operations console for queue recovery, stalled-lease handling, and support diagnostics.
+- Remaining work is now focused on richer worker coordination, async-safe billing edge cases, and more robust output handling rather than the initial worker runtime itself.
+- The next major slice should still center on orchestration hardening, but the emphasis has shifted toward support-grade replay tooling, multi-worker safety, and billing integrity under paid usage.
 - Billing follow-up should continue immediately after that with deeper webhook fulfillment, sandbox validation, and concurrency-safe balance handling.
 
 Recommended next-build order:
 
-1. Promote deferred processing into a dedicated background worker with richer operator controls and stronger operational diagnostics.
+1. Complete the post-worker orchestration slice: richer replay controls, multi-worker safety, and async-safe billing integrity.
 2. Improve room-analysis quality and provenance now that the review step is in place.
-3. Complete billing webhook fulfillment, sandbox validation, and async-safe balance handling.
+3. Complete billing webhook fulfillment, sandbox validation, and renewal/refund handling.
 4. Improve output handling with richer gallery and comparison flows.
 5. Polish upload, mobile capture, and account surfaces after the core loop is durable.
 

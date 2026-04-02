@@ -53,12 +53,14 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 - Deferred worker claims now write lease and heartbeat metadata into job history, making runner ownership and liveness visible while a queued job is processing.
 - Expired worker leases can now be reclaimed safely, and stale workers no longer own the final write path once a job has been reassigned or interrupted.
 - Internal operations health checks now expose generation queue counts, active workers, and expired leases for support-facing recovery.
+- A dedicated `bun run worker` runtime now polls the deferred queue directly, logs structured worker events, and supports one-shot recovery passes through `bun run worker:once`.
+- An authenticated operations console now exposes queued jobs, active worker leases, stalled runs, recent failures, and manual queue recovery controls without needing shell access.
 
 ## Remaining follow-up
 
-- This is still the recommended next engineering slice now that room-brief review, gallery review, retry-safe submissions, and initial credit enforcement are in place.
-- Move from the current internal runner endpoint to a dedicated background worker package when latency or retry volume grows.
-- Expand the current cancellation and diagnostic foundation into richer worker orchestration, including dedicated leasing storage, operator tools, and explicit in-flight interruption behavior once execution is fully detached.
+- The core dedicated worker runtime is now in place, so the next orchestration work should focus on stronger worker coordination, multi-worker safety, and richer replay tooling rather than basic queue polling.
+- Keep the internal runner endpoint as a recovery and diagnostics path, but treat the dedicated worker command as the default deferred-processing path.
+- Expand the current cancellation and diagnostic foundation into richer worker orchestration, including dedicated leasing storage, explicit in-flight interruption behavior, and support-safe replay tooling once execution volume grows.
 - Harden credit reservation and compensating ledger behavior for async execution once billing enforcement is live.
 - Add provider-aware critique and rerank passes for future quality control.
 

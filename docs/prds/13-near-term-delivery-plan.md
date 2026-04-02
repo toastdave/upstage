@@ -111,8 +111,9 @@ Current status:
 - Deferred worker claims now write runner identity, heartbeat, and lease-expiry metadata so support can see whether a queued job has been claimed and is still alive.
 - Expired worker leases can now be reclaimed safely, and stalled worker-owned runs can be canceled without letting stale workers overwrite the final job state.
 - Internal health checks now expose generation queue counts and expired leases alongside app, database, and storage status for operator recovery.
-- The remaining work in this tranche is to replace the internal runner path with a dedicated async worker and carry the new cancellation and diagnostics model into richer operator controls and dedicated worker coordination.
-- This is now the recommended next implementation focus before expanding gallery complexity or production billing scope.
+- A dedicated `bun run worker` runtime now handles deferred queue polling directly, and an authenticated operations console now exposes queued jobs, active leases, stalled runs, failures, and manual recovery actions in the browser.
+- The remaining work in this tranche is now post-worker hardening: richer replay controls, multi-worker coordination, and async-safe billing behavior once paid usage increases.
+- This remains the recommended reliability focus before expanding gallery complexity or production billing scope.
 
 ### 4. Credits and billing enforcement
 
