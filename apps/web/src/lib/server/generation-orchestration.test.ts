@@ -116,17 +116,23 @@ describe('generation orchestration helpers', () => {
 			getGenerationExecutionMetadata({
 				execution: {
 					acceptedAt: '2026-04-01T12:00:00.000Z',
+					lastHeartbeatAt: '2026-04-01T12:00:08.000Z',
 					processingMode: 'request',
 					queueDurationMs: 1200,
 					runDurationMs: 9200,
 					totalDurationMs: 10400,
+					workerId: 'runner-a',
+					workerLeaseExpiresAt: '2026-04-01T12:02:08.000Z',
 				},
 			})
 		).toMatchObject({
+			lastHeartbeatAt: '2026-04-01T12:00:08.000Z',
 			processingMode: 'request',
 			queueDurationMs: 1200,
 			runDurationMs: 9200,
 			totalDurationMs: 10400,
+			workerId: 'runner-a',
+			workerLeaseExpiresAt: '2026-04-01T12:02:08.000Z',
 		})
 	})
 

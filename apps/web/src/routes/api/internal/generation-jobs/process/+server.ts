@@ -11,6 +11,16 @@ function parseLimit(value: unknown) {
 	return Math.min(Math.max(Math.trunc(value), 1), 25)
 }
 
+function parsePositiveInteger(value: unknown) {
+	if (typeof value !== 'number' || !Number.isFinite(value)) {
+		return null
+	}
+
+	const normalized = Math.trunc(value)
+
+	return normalized > 0 ? normalized : null
+}
+
 export const POST: RequestHandler = async ({ request }) => {
 	const token = getGenerationJobRunnerToken()
 
@@ -25,7 +35,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ error: 'Unauthorized.' }, { status: 401 })
 	}
 
-	let payload: { jobId?: unknown; limit?: unknown } = {}
+	let payload: {
+		heartbeatIntervalSeconds?: unknown
+		jobId?: unknown
+		leaseSeconds?: unknown
+		limit?: unknown
+		runnerId?: unknown
+	} = {}
 
 	if ((request.headers.get('content-type') ?? '').includes('application/json')) {
 		try {
@@ -36,11 +52,23 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	const jobId = typeof payload.jobId === 'string' && payload.jobId.length > 0 ? payload.jobId : null
+	const runnerIdHeader = request.headers.get('x-upstage-runner-id')
+	const runnerId =
+		typeof payload.runnerId === 'string' && payload.runnerId.length > 0
+			? payload.runnerId
+			: runnerIdHeader && runnerIdHeader.length > 0
+				? runnerIdHeader
+				: 'internal-runner'
+	const heartbeatIntervalMs = parsePositiveInteger(payload.heartbeatIntervalSeconds)
+	const leaseDurationMs = parsePositiveInteger(payload.leaseSeconds)
 
 	if (jobId) {
 		const run = await runQueuedGenerationJob({
+			heartbeatIntervalMs: heartbeatIntervalMs ? heartbeatIntervalMs * 1000 : undefined,
 			jobId,
+			leaseDurationMs: leaseDurationMs ? leaseDurationMs * 1000 : undefined,
 			processingMode: 'worker',
+			workerId: runnerId,
 		})
 
 		return json({
@@ -53,7 +81,12 @@ export const POST: RequestHandler = async ({ request }) => {
 	const results: Array<Awaited<ReturnType<typeof processNextQueuedGenerationJob>>> = []
 
 	for (let index = 0; index < limit; index += 1) {
-		const next = await processNextQueuedGenerationJob({ processingMode: 'worker' })
+		const next = await processNextQueuedGenerationJob({
+			heartbeatIntervalMs: heartbeatIntervalMs ? heartbeatIntervalMs * 1000 : undefined,
+			leaseDurationMs: leaseDurationMs ? leaseDurationMs * 1000 : undefined,
+			processingMode: 'worker',
+			workerId: runnerId,
+		})
 
 		if (!next) {
 			break

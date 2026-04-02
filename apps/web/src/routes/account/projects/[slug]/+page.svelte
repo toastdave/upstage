@@ -217,6 +217,32 @@ function formatDuration(durationMs: number | null) {
 	return `${minutes}m ${remainingSeconds}s`
 }
 
+function isActiveWorkerLease(job: GeneratedJob) {
+	if (!job.execution.workerLeaseExpiresAt || job.execution.processingMode !== 'worker') {
+		return false
+	}
+
+	return new Date(job.execution.workerLeaseExpiresAt).getTime() > Date.now()
+}
+
+function getProcessingModeLabel(job: GeneratedJob) {
+	if (job.execution.processingMode === 'request') {
+		return 'Processed inline with the request'
+	}
+
+	if (job.status === 'queued') {
+		return 'Waiting for the deferred runner to claim this job'
+	}
+
+	if (job.execution.processingMode === 'worker') {
+		return isActiveWorkerLease(job)
+			? 'Claimed by the deferred runner with an active worker lease'
+			: 'Processed through the deferred runner path'
+	}
+
+	return 'Processing route pending'
+}
+
 async function copyGalleryImageLink(imageId: string, path: string) {
 	const url = new URL(path, window.location.origin).toString()
 	await navigator.clipboard.writeText(url)
@@ -703,7 +729,7 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 						<p class="text-sm uppercase tracking-[0.28em] text-terracotta-500">Generation history</p>
 						<h2 class="mt-3 font-display text-3xl text-ink-950">Job timeline</h2>
 						<p class="mt-3 max-w-3xl text-sm leading-7 text-ink-700">
-							Queued runs can be canceled until provider execution begins. Once a run moves into processing, the job stays traceable here with timing and credit diagnostics.
+							Queued runs can be canceled until provider execution begins. Once a run moves into processing, the job stays traceable here with timing, credit diagnostics, and deferred-runner lease details.
 						</p>
 					</div>
 					<span class="rounded-full border border-ink-950/10 bg-paper-100 px-4 py-2 text-xs uppercase tracking-[0.24em] text-ink-700">
@@ -783,12 +809,28 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 									<div class="rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-700">
 										<p class="text-xs uppercase tracking-[0.22em] text-ink-700/60">Queue time</p>
 										<p class="mt-2 text-ink-950">{queueDuration ?? (job.status === 'queued' ? 'Waiting to start' : 'Not recorded')}</p>
-										<p class="mt-1 text-xs text-ink-700/70">{job.execution.processingMode === 'request' ? 'Processed inline with the request' : 'Processing route pending'}</p>
+										<p class="mt-1 text-xs text-ink-700/70">{getProcessingModeLabel(job)}</p>
 									</div>
 									<div class="rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-700">
 										<p class="text-xs uppercase tracking-[0.22em] text-ink-700/60">Run time</p>
 										<p class="mt-2 text-ink-950">{runDuration ?? (job.status === 'processing' ? 'Running now' : 'Not recorded')}</p>
 										<p class="mt-1 text-xs text-ink-700/70">Total lifecycle: {totalDuration ?? 'Not recorded'}</p>
+									</div>
+									<div class="rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-700">
+										<p class="text-xs uppercase tracking-[0.22em] text-ink-700/60">Worker lease</p>
+										<p class="mt-2 text-ink-950">{job.execution.workerId ?? 'No worker claimed yet'}</p>
+										<p class="mt-1 text-xs text-ink-700/70">
+											{#if job.execution.lastHeartbeatAt}
+												Heartbeat {new Date(job.execution.lastHeartbeatAt).toLocaleString()}
+											{:else if job.status === 'queued'}
+												Lease starts when the deferred runner claims this job.
+											{:else}
+												No heartbeat recorded for this run.
+											{/if}
+											{#if job.execution.workerLeaseExpiresAt}
+												 - lease {isActiveWorkerLease(job) ? 'active' : 'expired'} until {new Date(job.execution.workerLeaseExpiresAt).toLocaleString()}
+											{/if}
+										</p>
 									</div>
 									<div class="rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-700">
 										<p class="text-xs uppercase tracking-[0.22em] text-ink-700/60">Credit handling</p>

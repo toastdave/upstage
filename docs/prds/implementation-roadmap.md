@@ -32,13 +32,14 @@ Current status:
 - Generation submissions now use deterministic idempotency keys, recent duplicate runs are deduplicated, and failed jobs can be retried safely from the project page.
 - Project job timelines now expose lifecycle timing, refund visibility, and queued-run cancellation before provider execution begins.
 - Generation can now run in deferred mode through an internal token-protected queue runner while preserving the stored provider route for each job.
-- Remaining work is focused on promoting that runner into a dedicated background worker, adding worker-aware cancellation semantics, billing enforcement, and richer output handling.
+- Deferred worker claims now publish runner identity plus lease and heartbeat metadata in job history.
+- Remaining work is focused on promoting that runner into a dedicated background worker, adding safe worker-aware cancellation/reassignment semantics, billing enforcement, and richer output handling.
 - The next major slice should center on orchestration hardening: async job processing, cancellation rules, and support-grade diagnostics that make the core loop trustworthy under paid usage.
 - Billing follow-up should continue immediately after that with deeper webhook fulfillment, sandbox validation, and concurrency-safe balance handling.
 
 Recommended next-build order:
 
-1. Promote deferred processing into a dedicated background worker with leases, heartbeats, and stronger operational diagnostics.
+1. Promote deferred processing into a dedicated background worker with safe reassignment, interruption rules, and stronger operational diagnostics.
 2. Improve room-analysis quality and provenance now that the review step is in place.
 3. Complete billing webhook fulfillment, sandbox validation, and async-safe balance handling.
 4. Improve output handling with richer gallery and comparison flows.

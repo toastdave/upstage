@@ -2,6 +2,8 @@ import { formatProjectType } from '$lib/projects'
 import {
 	getConfiguredGenerationModel,
 	getGenerationCapabilities,
+	getGenerationHeartbeatIntervalMs,
+	getGenerationLeaseDurationMs,
 	getGenerationProcessingMode,
 	getGenerationRoute,
 } from '$lib/server/ai/config'
@@ -56,6 +58,12 @@ export type ExecuteProjectGenerationResult = {
 }
 
 type JobProcessingMode = 'request' | 'worker'
+
+type JobProcessingLease = {
+	heartbeatIntervalMs: number
+	leaseDurationMs: number
+	workerId: string
+} | null
 
 type ProcessQueuedGenerationJobResult = {
 	error: string | null
@@ -332,6 +340,7 @@ async function loadGenerationExecutionSummary(jobId: string): Promise<Generation
 
 async function claimQueuedGenerationJob(options: {
 	job: ProcessableGenerationJobRecord
+	lease: JobProcessingLease
 	processingMode: JobProcessingMode
 }) {
 	const acceptedAt = getGenerationExecutionMetadata(options.job.responseMetadata).acceptedAt
@@ -344,6 +353,16 @@ async function claimQueuedGenerationJob(options: {
 		options.job.responseMetadata && typeof options.job.responseMetadata === 'object'
 			? (options.job.responseMetadata as Record<string, unknown>)
 			: {}
+	const claimedResponseMetadata = updateExecutionMetadata(persistedResponseMetadata, {
+		lastHeartbeatAt: options.lease ? processingStartedAt.toISOString() : null,
+		processingMode: options.processingMode,
+		queueDurationMs,
+		startedAt: processingStartedAt.toISOString(),
+		workerId: options.lease?.workerId ?? null,
+		workerLeaseExpiresAt: options.lease
+			? new Date(processingStartedAt.getTime() + options.lease.leaseDurationMs).toISOString()
+			: null,
+	})
 
 	const [claimedJob] = await db
 		.update(generationJob)
@@ -351,11 +370,7 @@ async function claimQueuedGenerationJob(options: {
 			startedAt: processingStartedAt,
 			status: 'processing',
 			updatedAt: processingStartedAt,
-			responseMetadata: updateExecutionMetadata(persistedResponseMetadata, {
-				processingMode: options.processingMode,
-				queueDurationMs,
-				startedAt: processingStartedAt.toISOString(),
-			}),
+			responseMetadata: claimedResponseMetadata,
 		})
 		.where(and(eq(generationJob.id, options.job.id), eq(generationJob.status, 'queued')))
 		.returning({ id: generationJob.id })
@@ -366,17 +381,80 @@ async function claimQueuedGenerationJob(options: {
 					Number.isFinite(acceptedAtMs) && acceptedAtMs > 0
 						? acceptedAtMs
 						: options.job.createdAt.getTime(),
-				persistedResponseMetadata,
+				claimedResponseMetadata,
 				processingStartedAt,
 				queueDurationMs,
 			}
 		: null
 }
 
+function startGenerationJobHeartbeat(options: {
+	jobId: string
+	lease: JobProcessingLease
+	processingMode: JobProcessingMode
+	processingStartedAt: Date
+	queueDurationMs: number
+	responseMetadata: Record<string, unknown>
+}) {
+	if (!options.lease) {
+		return {
+			stop: async () => {},
+		}
+	}
+
+	const lease = options.lease
+
+	let active = true
+	let running = false
+
+	const tick = async () => {
+		if (!active || running) {
+			return
+		}
+
+		running = true
+		const heartbeatAt = new Date()
+		const workerLeaseExpiresAt = new Date(
+			heartbeatAt.getTime() + lease.leaseDurationMs
+		).toISOString()
+
+		try {
+			await db
+				.update(generationJob)
+				.set({
+					updatedAt: heartbeatAt,
+					responseMetadata: updateExecutionMetadata(options.responseMetadata, {
+						lastHeartbeatAt: heartbeatAt.toISOString(),
+						processingMode: options.processingMode,
+						queueDurationMs: options.queueDurationMs,
+						startedAt: options.processingStartedAt.toISOString(),
+						workerId: lease.workerId,
+						workerLeaseExpiresAt,
+					}),
+				})
+				.where(and(eq(generationJob.id, options.jobId), eq(generationJob.status, 'processing')))
+		} finally {
+			running = false
+		}
+	}
+
+	const interval = setInterval(() => {
+		void tick()
+	}, lease.heartbeatIntervalMs)
+
+	return {
+		stop: async () => {
+			active = false
+			clearInterval(interval)
+		},
+	}
+}
+
 async function runGenerationJob(options: {
 	acceptedAtMs: number
 	job: ProcessableGenerationJobRecord
-	persistedResponseMetadata: Record<string, unknown>
+	lease: JobProcessingLease
+	responseMetadata: Record<string, unknown>
 	processingMode: JobProcessingMode
 	processingStartedAt: Date
 	queueDurationMs: number
@@ -394,112 +472,138 @@ async function runGenerationJob(options: {
 		throw new Error('Source image contents are missing from storage')
 	}
 
-	const sourceBuffer = new Uint8Array(await sourceObject.Body.transformToByteArray())
-	const executionResult = await executeImageGenerationForRoute(options.job.provider, {
-		additionalInstructions: submission.additionalInstructions,
-		aspectRatio: options.job.aspectRatio,
-		compiledPrompt: options.job.prompt,
+	const heartbeat = startGenerationJobHeartbeat({
 		jobId: options.job.id,
-		presetName: getStoredPresetName(roomBrief, options.job.styleLabel),
-		projectSlug: options.job.projectSlug,
-		protectedElements:
-			typeof roomBrief.protectedElements === 'string' ? roomBrief.protectedElements : null,
-		requestedCount: 1,
-		sourceImage: {
-			data: sourceBuffer,
-			mimeType: options.job.sourceAssetMimeType,
-			storageKey: options.job.sourceAssetStorageKey,
-		},
-		styleIntent: options.job.projectStyleIntent,
-		userId: options.job.ownerUserId,
-		workflowLabel: getStoredWorkflowLabel(roomBrief, options.job.projectType),
-		workflowType: options.job.projectType,
-		roomBrief,
+		lease: options.lease,
+		processingMode: options.processingMode,
+		processingStartedAt: options.processingStartedAt,
+		queueDurationMs: options.queueDurationMs,
+		responseMetadata: options.responseMetadata,
 	})
 
-	for (const image of executionResult.images) {
-		const storageKey = buildGenerationAssetStorageKey(
-			options.job.projectSlug,
-			options.job.id,
-			image.sortOrder,
-			image.mimeType
-		)
-
-		await uploadStoredObject({
-			body: image.data,
-			cacheControl: 'private, max-age=3600',
-			contentType: image.mimeType,
-			storageKey,
-		})
-
-		await db.insert(generationImage).values({
+	const sourceBuffer = new Uint8Array(await sourceObject.Body.transformToByteArray())
+	try {
+		const executionResult = await executeImageGenerationForRoute(options.job.provider, {
+			additionalInstructions: submission.additionalInstructions,
+			aspectRatio: options.job.aspectRatio,
+			compiledPrompt: options.job.prompt,
 			jobId: options.job.id,
-			storageKey,
-			url: buildStoredMediaUrl(storageKey),
-			mimeType: image.mimeType,
-			revisedPrompt: image.revisedPrompt ?? null,
-			seed: image.seed ?? null,
-			width: image.width ?? null,
-			height: image.height ?? null,
-			sortOrder: image.sortOrder,
-		})
-	}
-
-	const completedAt = new Date()
-	const runDurationMs = completedAt.getTime() - options.processingStartedAt.getTime()
-	const totalDurationMs = completedAt.getTime() - options.acceptedAtMs
-
-	await db
-		.update(generationJob)
-		.set({
-			provider: executionResult.providerRoute,
-			model: executionResult.model,
-			providerGenerationId: executionResult.providerGenerationId ?? null,
-			requestMetadata: {
-				...(options.job.requestMetadata as Record<string, unknown>),
-				providerRequest: executionResult.requestMetadata,
+			presetName: getStoredPresetName(roomBrief, options.job.styleLabel),
+			projectSlug: options.job.projectSlug,
+			protectedElements:
+				typeof roomBrief.protectedElements === 'string' ? roomBrief.protectedElements : null,
+			requestedCount: 1,
+			sourceImage: {
+				data: sourceBuffer,
+				mimeType: options.job.sourceAssetMimeType,
+				storageKey: options.job.sourceAssetStorageKey,
 			},
-			responseMetadata: {
-				...executionResult.responseMetadata,
-				billing: getGenerationBillingMetadata(options.job.responseMetadata),
-				execution: {
-					...(options.persistedResponseMetadata.execution as Record<string, unknown>),
-					completedAt: completedAt.toISOString(),
-					imageCount: executionResult.images.length,
-					processingMode: options.processingMode,
-					queueDurationMs: options.queueDurationMs,
-					runDurationMs,
-					startedAt: options.processingStartedAt.toISOString(),
-					totalDurationMs,
+			styleIntent: options.job.projectStyleIntent,
+			userId: options.job.ownerUserId,
+			workflowLabel: getStoredWorkflowLabel(roomBrief, options.job.projectType),
+			workflowType: options.job.projectType,
+			roomBrief,
+		})
+
+		for (const image of executionResult.images) {
+			const storageKey = buildGenerationAssetStorageKey(
+				options.job.projectSlug,
+				options.job.id,
+				image.sortOrder,
+				image.mimeType
+			)
+
+			await uploadStoredObject({
+				body: image.data,
+				cacheControl: 'private, max-age=3600',
+				contentType: image.mimeType,
+				storageKey,
+			})
+
+			await db.insert(generationImage).values({
+				jobId: options.job.id,
+				storageKey,
+				url: buildStoredMediaUrl(storageKey),
+				mimeType: image.mimeType,
+				revisedPrompt: image.revisedPrompt ?? null,
+				seed: image.seed ?? null,
+				width: image.width ?? null,
+				height: image.height ?? null,
+				sortOrder: image.sortOrder,
+			})
+		}
+
+		const completedAt = new Date()
+		const runDurationMs = completedAt.getTime() - options.processingStartedAt.getTime()
+		const totalDurationMs = completedAt.getTime() - options.acceptedAtMs
+
+		await db
+			.update(generationJob)
+			.set({
+				provider: executionResult.providerRoute,
+				model: executionResult.model,
+				providerGenerationId: executionResult.providerGenerationId ?? null,
+				requestMetadata: {
+					...(options.job.requestMetadata as Record<string, unknown>),
+					providerRequest: executionResult.requestMetadata,
 				},
-				warnings: executionResult.warnings ?? [],
-			},
+				responseMetadata: {
+					...executionResult.responseMetadata,
+					billing: getGenerationBillingMetadata(options.job.responseMetadata),
+					execution: {
+						...(options.responseMetadata.execution as Record<string, unknown>),
+						completedAt: completedAt.toISOString(),
+						imageCount: executionResult.images.length,
+						lastHeartbeatAt: options.lease ? completedAt.toISOString() : null,
+						processingMode: options.processingMode,
+						queueDurationMs: options.queueDurationMs,
+						runDurationMs,
+						startedAt: options.processingStartedAt.toISOString(),
+						totalDurationMs,
+						workerLeaseExpiresAt: null,
+					},
+					warnings: executionResult.warnings ?? [],
+				},
+				status: 'succeeded',
+				completedAt,
+				updatedAt: completedAt,
+			})
+			.where(eq(generationJob.id, options.job.id))
+
+		const summary = buildExecutionSummary({
+			id: options.job.id,
+			requestMetadata: options.job.requestMetadata,
 			status: 'succeeded',
-			completedAt,
-			updatedAt: completedAt,
 		})
-		.where(eq(generationJob.id, options.job.id))
 
-	const summary = buildExecutionSummary({
-		id: options.job.id,
-		requestMetadata: options.job.requestMetadata,
-		status: 'succeeded',
-	})
-
-	return {
-		jobId: summary.jobId,
-		outcome: 'created',
-		retryAttempt: summary.retryAttempt,
-		status: summary.status,
-		trigger: summary.trigger,
+		return {
+			jobId: summary.jobId,
+			outcome: 'created',
+			retryAttempt: summary.retryAttempt,
+			status: summary.status,
+			trigger: summary.trigger,
+		}
+	} finally {
+		await heartbeat.stop()
 	}
 }
 
 export async function processQueuedGenerationJob(options: {
+	heartbeatIntervalMs?: number
 	jobId: string
+	leaseDurationMs?: number
 	processingMode?: JobProcessingMode
+	workerId?: string
 }): Promise<ExecuteProjectGenerationResult> {
 	const processingMode = options.processingMode ?? 'worker'
+	const lease =
+		processingMode === 'worker'
+			? {
+					heartbeatIntervalMs: options.heartbeatIntervalMs ?? getGenerationHeartbeatIntervalMs(),
+					leaseDurationMs: options.leaseDurationMs ?? getGenerationLeaseDurationMs(),
+					workerId: options.workerId ?? 'internal-runner',
+				}
+			: null
 	const job = await loadProcessableGenerationJob(options.jobId)
 	const summary = buildExecutionSummary(job)
 
@@ -513,7 +617,7 @@ export async function processQueuedGenerationJob(options: {
 		}
 	}
 
-	const claim = await claimQueuedGenerationJob({ job, processingMode })
+	const claim = await claimQueuedGenerationJob({ job, lease, processingMode })
 
 	if (!claim) {
 		const current = await loadGenerationExecutionSummary(options.jobId)
@@ -531,7 +635,8 @@ export async function processQueuedGenerationJob(options: {
 		return await runGenerationJob({
 			acceptedAtMs: claim.acceptedAtMs,
 			job,
-			persistedResponseMetadata: claim.persistedResponseMetadata,
+			lease,
+			responseMetadata: claim.claimedResponseMetadata,
 			processingMode,
 			processingStartedAt: claim.processingStartedAt,
 			queueDurationMs: claim.queueDurationMs,
@@ -582,19 +687,21 @@ export async function processQueuedGenerationJob(options: {
 					completedAt,
 					errorMessage: failure.message,
 					responseMetadata: {
-						...updateBillingMetadata(claim.persistedResponseMetadata, {
+						...updateBillingMetadata(claim.claimedResponseMetadata, {
 							balanceAfterRefund,
 							refundReferenceId,
 							refundedCredits,
 						}),
 						execution: {
-							...(claim.persistedResponseMetadata.execution as Record<string, unknown>),
+							...(claim.claimedResponseMetadata.execution as Record<string, unknown>),
 							completedAt: completedAt.toISOString(),
+							lastHeartbeatAt: lease ? completedAt.toISOString() : null,
 							processingMode,
 							queueDurationMs: claim.queueDurationMs,
 							runDurationMs,
 							startedAt: claim.processingStartedAt.toISOString(),
 							totalDurationMs,
+							workerLeaseExpiresAt: null,
 						},
 						failure: {
 							...failure,
@@ -612,8 +719,11 @@ export async function processQueuedGenerationJob(options: {
 }
 
 export async function runQueuedGenerationJob(options: {
+	heartbeatIntervalMs?: number
 	jobId: string
+	leaseDurationMs?: number
 	processingMode?: JobProcessingMode
+	workerId?: string
 }): Promise<ProcessQueuedGenerationJobResult> {
 	try {
 		return {
@@ -637,7 +747,10 @@ export async function runQueuedGenerationJob(options: {
 }
 
 export async function processNextQueuedGenerationJob(options?: {
+	heartbeatIntervalMs?: number
+	leaseDurationMs?: number
 	processingMode?: JobProcessingMode
+	workerId?: string
 }): Promise<ProcessQueuedGenerationJobResult | null> {
 	const [queuedJob] = await db
 		.select({ id: generationJob.id })
@@ -651,8 +764,11 @@ export async function processNextQueuedGenerationJob(options?: {
 	}
 
 	return runQueuedGenerationJob({
+		heartbeatIntervalMs: options?.heartbeatIntervalMs,
 		jobId: queuedJob.id,
+		leaseDurationMs: options?.leaseDurationMs,
 		processingMode: options?.processingMode,
+		workerId: options?.workerId,
 	})
 }
 

@@ -192,6 +192,8 @@ Use the full `https://` URL. This setup serves HTTPS on port `1201`; `http://` r
 - Hosted environments should set `AI_EXECUTION_MODE=production`, which routes generation through Gemini via AI Gateway.
 - `AI_GENERATION_PROCESSING_MODE=inline` keeps generation on the request path; set it to `deferred` to leave jobs queued for the internal runner endpoint.
 - `AI_JOB_RUNNER_TOKEN` secures the internal queued-job runner endpoint when deferred processing is enabled.
+- `AI_GENERATION_LEASE_SECONDS` defines how long a deferred runner claim stays valid before it must be renewed.
+- `AI_GENERATION_HEARTBEAT_INTERVAL_SECONDS` controls how often deferred workers refresh heartbeat metadata while a job is processing.
 - `AI_LOCAL_ANALYSIS_MODEL` defaults to `gemma3`.
 - `AI_LOCAL_IMAGE_MODEL` defaults to `x/flux2-klein:4b`.
 - `AI_PRIMARY_MODEL` defaults to `google/gemini-3-pro-image-preview`.
@@ -203,6 +205,8 @@ Queued generation runner endpoint:
 - `POST /api/internal/generation-jobs/process`
 - Send `Authorization: Bearer $AI_JOB_RUNNER_TOKEN`
 - Optional JSON body: `{"jobId":"<job-id>"}` to process one job or `{"limit":5}` to drain several queued jobs in order
+- Optional runner diagnostics body fields: `{"runnerId":"worker-a","leaseSeconds":180,"heartbeatIntervalSeconds":20}`
+- You can also send `x-upstage-runner-id: worker-a` to stamp heartbeat metadata with a stable worker identity
 
 ## Billing setup
 

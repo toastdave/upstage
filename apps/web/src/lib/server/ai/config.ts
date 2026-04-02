@@ -20,12 +20,33 @@ function parseGenerationProcessingMode(value: string | undefined): GenerationPro
 	return value === 'deferred' ? 'deferred' : 'inline'
 }
 
+function parsePositiveInteger(value: string | undefined, fallback: number) {
+	if (!value) {
+		return fallback
+	}
+
+	const parsed = Number.parseInt(value, 10)
+
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
 export function getAiRuntimeConfig() {
 	const executionMode = coalesce(env.AI_EXECUTION_MODE, process.env.AI_EXECUTION_MODE)
 	const localRouteEnabled = executionMode ? executionMode === 'local' : dev
 
 	return {
 		executionMode: localRouteEnabled ? 'local' : 'production',
+		generationHeartbeatIntervalSeconds: parsePositiveInteger(
+			coalesce(
+				env.AI_GENERATION_HEARTBEAT_INTERVAL_SECONDS,
+				process.env.AI_GENERATION_HEARTBEAT_INTERVAL_SECONDS
+			),
+			15
+		),
+		generationLeaseSeconds: parsePositiveInteger(
+			coalesce(env.AI_GENERATION_LEASE_SECONDS, process.env.AI_GENERATION_LEASE_SECONDS),
+			120
+		),
 		generationProcessingMode: parseGenerationProcessingMode(
 			coalesce(env.AI_GENERATION_PROCESSING_MODE, process.env.AI_GENERATION_PROCESSING_MODE)
 		),
@@ -51,6 +72,14 @@ export function getAiRuntimeConfig() {
 
 export function getGenerationProcessingMode() {
 	return getAiRuntimeConfig().generationProcessingMode
+}
+
+export function getGenerationHeartbeatIntervalMs() {
+	return getAiRuntimeConfig().generationHeartbeatIntervalSeconds * 1000
+}
+
+export function getGenerationLeaseDurationMs() {
+	return getAiRuntimeConfig().generationLeaseSeconds * 1000
 }
 
 export function getGenerationJobRunnerToken() {

@@ -20,6 +20,7 @@ export type GenerationExecutionMetadata = {
 	cancellationReason: string | null
 	completedAt: string | null
 	imageCount: number | null
+	lastHeartbeatAt: string | null
 	processingMode: string | null
 	queueDurationMs: number | null
 	retryAttempt: number | null
@@ -28,6 +29,8 @@ export type GenerationExecutionMetadata = {
 	startedAt: string | null
 	totalDurationMs: number | null
 	trigger: 'manual' | 'retry' | null
+	workerId: string | null
+	workerLeaseExpiresAt: string | null
 }
 
 export type GenerationBillingMetadata = {
@@ -232,6 +235,7 @@ export function getGenerationExecutionMetadata(
 		cancellationReason: readString(execution?.cancellationReason),
 		completedAt: readString(execution?.completedAt),
 		imageCount: readNumber(execution?.imageCount),
+		lastHeartbeatAt: readString(execution?.lastHeartbeatAt),
 		processingMode: readString(execution?.processingMode),
 		queueDurationMs: readNumber(execution?.queueDurationMs),
 		retryAttempt: readNumber(execution?.retryAttempt),
@@ -241,6 +245,8 @@ export function getGenerationExecutionMetadata(
 		totalDurationMs: readNumber(execution?.totalDurationMs),
 		trigger:
 			execution?.trigger === 'manual' || execution?.trigger === 'retry' ? execution.trigger : null,
+		workerId: readString(execution?.workerId),
+		workerLeaseExpiresAt: readString(execution?.workerLeaseExpiresAt),
 	}
 }
 
