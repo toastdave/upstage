@@ -29,6 +29,7 @@ Current status:
 - Initial generation setup, room brief compilation, provider routing, and job history are in place.
 - Source-photo uploads now create a draft room brief automatically, project pages expose a structured review step, and reviewed briefs feed the generation planner.
 - Project pages now expose a gallery-style before-and-after review surface with persisted favorites and download-ready generated images.
+- Projects now also expose dedicated gallery and job-detail routes so output libraries can grow without overloading the main project workflow.
 - Generation submissions now use deterministic idempotency keys, recent duplicate runs are deduplicated, and failed jobs can be retried safely from the project page.
 - Project job timelines now expose lifecycle timing, refund visibility, and queued-run cancellation before provider execution begins.
 - Generation can now run in deferred mode through an internal token-protected queue runner while preserving the stored provider route for each job.
@@ -69,6 +70,7 @@ Current status:
 - Queued generation cancellations now restore credits through the same ledger path before provider execution starts, which reduces support risk while async processing is still on the roadmap.
 - Polar sandbox checkout and customer-portal routes are now wired into the workspace, and webhook intake is in place for sandbox validation.
 - A dedicated billing page now exposes ledger history, sandbox readiness, webhook endpoint guidance, and recent user-scoped Polar webhook events.
+- A public pricing page now exposes seeded Free-versus-Pro plan details and links users into the hosted billing flow.
 - Remaining work is focused on deeper webhook fulfillment for renewals and refunds, richer pricing surfaces, and full sandbox-to-production rollout validation after async orchestration closes the main balance-concurrency risk.
 
 ## Phase 5 - Polish And Growth

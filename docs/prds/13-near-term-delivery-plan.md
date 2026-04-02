@@ -79,7 +79,8 @@ Exit criteria:
 Current status:
 
 - Initial delivery is shipped. Project pages now include a gallery-style before-and-after review surface, persisted favorite toggles, download actions, and copy-link controls for generated images.
-- The remaining work in this tranche is to split the gallery into richer library and job-detail views, improve export framing, and scale the browsing UX for larger output sets.
+- The project library now also has dedicated gallery and job-detail routes so larger output sets can be browsed outside the main generation workflow.
+- The remaining work in this tranche is to improve export framing, deepen shortlist workflows, and scale the browsing UX for larger output sets.
 
 ### 3. Orchestration hardening
 
@@ -142,6 +143,7 @@ Current status:
 - Queued generation cancellations now restore credits through the same traceable refund path before provider execution begins.
 - Polar sandbox checkout and portal handoff routes are now wired, and webhook intake is in place so the hosted billing flow can be tested end to end once sandbox keys are added.
 - A dedicated billing page now surfaces credit history, sandbox readiness, webhook endpoint guidance, and recent user-scoped Polar event audit entries.
+- The public site now exposes a pricing page with seeded Free-versus-Pro plan details and upgrade entrypoints before checkout.
 - The remaining work in this tranche is deeper webhook fulfillment for renewals and refunds, richer pricing UX, and production-readiness validation after sandbox testing.
 
 ### 5. Upload and account polish

@@ -49,10 +49,10 @@ Monetize Upstage with prepaid credits and subscription tiers while protecting ma
 - Billing loads now attempt to sync local entitlements from Polar customer state using the Upstage user ID as the external customer identifier.
 - The workspace now has a dedicated billing page with ledger history, sandbox readiness checks, webhook endpoint guidance, and recent user-scoped Polar event audit entries.
 - Billing webhooks now persist pending-versus-processed state so replay and fulfillment status are inspectable during sandbox validation.
+- The public site now has a dedicated pricing page so plan differences, included credits, and upgrade entrypoints are visible before signup or checkout.
 
 ## Remaining follow-up
 
-- Build fuller pricing and billing surfaces beyond the current workspace entrypoints.
 - Expand webhook fulfillment from customer-state syncing into richer purchase, renewal, and refund audit handling.
 - Add stronger concurrency protections around balance reservation once generation moves to async workers.
 - Treat async orchestration hardening as the dependency to close before production billing rollout.

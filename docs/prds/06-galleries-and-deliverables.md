@@ -36,11 +36,12 @@ Turn generated assets into usable deliverables for listing packages, presentatio
 - Project pages now show generation history and render saved output images inline with each job.
 - Source images and output batches already live together in the project detail workflow, even though the dedicated comparison and deliverables UX is still minimal.
 - Project detail pages now include a gallery-style before-and-after review surface with persisted favorites, download actions, and copy-link controls for generated images.
+- Projects now have a dedicated gallery route that groups deliverables by source photo, keeps favorites in a separate rail, and makes it easier to scan larger result sets.
+- Each generation batch now has a dedicated job-detail route with before-and-after comparison, variant switching, downloads, copy-link actions, and job-level diagnostics.
 
 ## Remaining follow-up
 
-- Break the current in-page gallery into richer project-level browsing and job-detail routes when the output library grows.
-- Add export framing and richer variant grouping for larger result sets.
+- Add export framing, richer variant grouping, and stronger shortlist workflows for larger result sets.
 - Decide whether copy-link stays private and session-bound or grows into a share-ready deliverable flow later.
 
 ## Non-goals
