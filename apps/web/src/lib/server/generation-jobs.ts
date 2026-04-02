@@ -103,6 +103,19 @@ type ProcessableGenerationJobRecord = {
 	styleLabel: string | null
 }
 
+export type GenerationOperationsSnapshot = {
+	activeWorkerCount: number
+	cancelledCount: number
+	expiredLeaseCount: number
+	failedCount: number
+	latestUpdatedAt: Date | null
+	oldestExpiredLeaseAt: Date | null
+	oldestQueuedAt: Date | null
+	processingInlineCount: number
+	queuedCount: number
+	succeededCount: number
+}
+
 export async function loadProjectGenerationState(projectId: string) {
 	const presets = await db
 		.select({
@@ -209,6 +222,36 @@ export async function loadProjectGenerationState(projectId: string) {
 			sourceAsset: sourceAssetById.get(job.sourceAssetId) ?? null,
 		})),
 		presets,
+	}
+}
+
+export async function loadGenerationOperationsSnapshot(): Promise<GenerationOperationsSnapshot> {
+	const [snapshot] = await db
+		.select({
+			activeWorkerCount: sql<number>`coalesce(sum(case when ${generationJob.status} = 'processing' and (${generationJob.responseMetadata} -> 'execution' ->> 'processingMode') = 'worker' and ((${generationJob.responseMetadata} -> 'execution' ->> 'workerLeaseExpiresAt')::timestamptz) > now() then 1 else 0 end), 0)`,
+			cancelledCount: sql<number>`coalesce(sum(case when ${generationJob.status} = 'cancelled' then 1 else 0 end), 0)`,
+			expiredLeaseCount: sql<number>`coalesce(sum(case when ${generationJob.status} = 'processing' and (${generationJob.responseMetadata} -> 'execution' ->> 'processingMode') = 'worker' and (${generationJob.responseMetadata} -> 'execution' ->> 'workerLeaseExpiresAt') is not null and ((${generationJob.responseMetadata} -> 'execution' ->> 'workerLeaseExpiresAt')::timestamptz) <= now() then 1 else 0 end), 0)`,
+			failedCount: sql<number>`coalesce(sum(case when ${generationJob.status} = 'failed' then 1 else 0 end), 0)`,
+			latestUpdatedAt: sql<Date | null>`max(${generationJob.updatedAt})`,
+			oldestExpiredLeaseAt: sql<Date | null>`min(case when ${generationJob.status} = 'processing' and (${generationJob.responseMetadata} -> 'execution' ->> 'processingMode') = 'worker' and (${generationJob.responseMetadata} -> 'execution' ->> 'workerLeaseExpiresAt') is not null and ((${generationJob.responseMetadata} -> 'execution' ->> 'workerLeaseExpiresAt')::timestamptz) <= now() then ${generationJob.updatedAt} else null end)`,
+			oldestQueuedAt: sql<Date | null>`min(case when ${generationJob.status} = 'queued' then ${generationJob.createdAt} else null end)`,
+			processingInlineCount: sql<number>`coalesce(sum(case when ${generationJob.status} = 'processing' and coalesce(${generationJob.responseMetadata} -> 'execution' ->> 'processingMode', 'request') = 'request' then 1 else 0 end), 0)`,
+			queuedCount: sql<number>`coalesce(sum(case when ${generationJob.status} = 'queued' then 1 else 0 end), 0)`,
+			succeededCount: sql<number>`coalesce(sum(case when ${generationJob.status} = 'succeeded' then 1 else 0 end), 0)`,
+		})
+		.from(generationJob)
+
+	return {
+		activeWorkerCount: Number(snapshot?.activeWorkerCount ?? 0),
+		cancelledCount: Number(snapshot?.cancelledCount ?? 0),
+		expiredLeaseCount: Number(snapshot?.expiredLeaseCount ?? 0),
+		failedCount: Number(snapshot?.failedCount ?? 0),
+		latestUpdatedAt: snapshot?.latestUpdatedAt ?? null,
+		oldestExpiredLeaseAt: snapshot?.oldestExpiredLeaseAt ?? null,
+		oldestQueuedAt: snapshot?.oldestQueuedAt ?? null,
+		processingInlineCount: Number(snapshot?.processingInlineCount ?? 0),
+		queuedCount: Number(snapshot?.queuedCount ?? 0),
+		succeededCount: Number(snapshot?.succeededCount ?? 0),
 	}
 }
 

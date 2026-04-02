@@ -1,5 +1,10 @@
 import { env } from '$env/dynamic/private'
-import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import {
+	GetObjectCommand,
+	ListObjectsV2Command,
+	PutObjectCommand,
+	S3Client,
+} from '@aws-sdk/client-s3'
 
 const globalForStorage = globalThis as typeof globalThis & {
 	__upstageStorageClient?: S3Client
@@ -112,4 +117,31 @@ export async function getStoredObject(storageKey: string) {
 			Key: storageKey,
 		})
 	)
+}
+
+export async function checkStorageHealth() {
+	if (!env.S3_BUCKET) {
+		return {
+			message: 'S3_BUCKET is required for storage health checks.',
+			status: 'error' as const,
+		}
+	}
+
+	try {
+		await getStorageClient().send(
+			new ListObjectsV2Command({
+				Bucket: env.S3_BUCKET,
+				MaxKeys: 1,
+			})
+		)
+
+		return {
+			status: 'ok' as const,
+		}
+	} catch (error) {
+		return {
+			message: error instanceof Error ? error.message : 'Storage health check failed unexpectedly.',
+			status: 'error' as const,
+		}
+	}
 }

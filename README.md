@@ -192,6 +192,7 @@ Use the full `https://` URL. This setup serves HTTPS on port `1201`; `http://` r
 - Hosted environments should set `AI_EXECUTION_MODE=production`, which routes generation through Gemini via AI Gateway.
 - `AI_GENERATION_PROCESSING_MODE=inline` keeps generation on the request path; set it to `deferred` to leave jobs queued for the internal runner endpoint.
 - `AI_JOB_RUNNER_TOKEN` secures the internal queued-job runner endpoint when deferred processing is enabled.
+- `UPSTAGE_INTERNAL_API_TOKEN` optionally provides one shared token for all internal operations endpoints; if omitted, internal APIs fall back to `AI_JOB_RUNNER_TOKEN`.
 - `AI_GENERATION_LEASE_SECONDS` defines how long a deferred runner claim stays valid before it must be renewed.
 - `AI_GENERATION_HEARTBEAT_INTERVAL_SECONDS` controls how often deferred workers refresh heartbeat metadata while a job is processing.
 - `AI_LOCAL_ANALYSIS_MODEL` defaults to `gemma3`.
@@ -208,6 +209,12 @@ Queued generation runner endpoint:
 - Optional runner diagnostics body fields: `{"runnerId":"worker-a","leaseSeconds":180,"heartbeatIntervalSeconds":20}`
 - You can also send `x-upstage-runner-id: worker-a` to stamp heartbeat metadata with a stable worker identity
 - The runner now reclaims worker-owned jobs whose lease has expired, so stalled deferred runs do not remain stuck in `processing` forever
+
+Internal health endpoint:
+
+- `GET /api/internal/health`
+- Send `Authorization: Bearer $UPSTAGE_INTERNAL_API_TOKEN` or `Authorization: Bearer $AI_JOB_RUNNER_TOKEN`
+- Returns app, database, storage, billing-config, and generation-queue health including queued-job counts and expired worker leases
 
 ## Billing setup
 

@@ -52,6 +52,7 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 - The orchestration layer now supports deferred processing mode plus an internal token-protected job-runner endpoint, so queued jobs can be claimed outside the request path while preserving the original provider route and stored job metadata.
 - Deferred worker claims now write lease and heartbeat metadata into job history, making runner ownership and liveness visible while a queued job is processing.
 - Expired worker leases can now be reclaimed safely, and stale workers no longer own the final write path once a job has been reassigned or interrupted.
+- Internal operations health checks now expose generation queue counts, active workers, and expired leases for support-facing recovery.
 
 ## Remaining follow-up
 

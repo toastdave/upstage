@@ -1,5 +1,5 @@
-import { getGenerationJobRunnerToken } from '$lib/server/ai/config'
 import { processNextQueuedGenerationJob, runQueuedGenerationJob } from '$lib/server/generation-jobs'
+import { validateInternalApiAuthorization } from '$lib/server/internal-api'
 import { json } from '@sveltejs/kit'
 import type { RequestHandler } from './$types'
 
@@ -22,17 +22,10 @@ function parsePositiveInteger(value: unknown) {
 }
 
 export const POST: RequestHandler = async ({ request }) => {
-	const token = getGenerationJobRunnerToken()
+	const authorizationError = validateInternalApiAuthorization(request)
 
-	if (!token) {
-		return json(
-			{ error: 'AI_JOB_RUNNER_TOKEN must be configured before using the job runner endpoint.' },
-			{ status: 503 }
-		)
-	}
-
-	if (request.headers.get('authorization') !== `Bearer ${token}`) {
-		return json({ error: 'Unauthorized.' }, { status: 401 })
+	if (authorizationError) {
+		return json({ error: authorizationError.error }, { status: authorizationError.status })
 	}
 
 	let payload: {

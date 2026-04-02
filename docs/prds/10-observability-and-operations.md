@@ -38,11 +38,13 @@ Ensure the MVP can be operated, debugged, and improved after launch without gues
 - Generation jobs now persist provider route, request metadata, response metadata, and failure messages.
 - Local infrastructure and README guidance already document Ollama setup and route selection.
 - Billing webhook intake now persists provider event identifiers plus pending-versus-processed state, and the billing page exposes recent user-scoped Polar events for sandbox validation.
+- Internal operations endpoints now expose authenticated health checks for the app, database, storage, billing configuration, and generation queue state.
+- Generation operations snapshots now surface queued counts, active worker counts, and expired worker leases so support can spot stuck async work without reading raw logs.
 
 ## Remaining follow-up
 
-- Add explicit structured logging, analytics events, and admin-friendly replay tooling.
-- Add visibility into per-job latency, output counts, and provider capability downgrade reasons in the UI or internal tooling.
+- Add explicit structured logging, analytics events, and richer admin-friendly replay tooling.
+- Add deeper visibility into provider capability downgrade reasons and request-level recovery steps in the UI or internal tooling.
 
 ## Non-goals
 

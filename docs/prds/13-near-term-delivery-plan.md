@@ -110,6 +110,7 @@ Current status:
 - The app now supports a deferred processing mode plus an internal job-runner endpoint so queued jobs can be claimed outside the request path when needed.
 - Deferred worker claims now write runner identity, heartbeat, and lease-expiry metadata so support can see whether a queued job has been claimed and is still alive.
 - Expired worker leases can now be reclaimed safely, and stalled worker-owned runs can be canceled without letting stale workers overwrite the final job state.
+- Internal health checks now expose generation queue counts and expired leases alongside app, database, and storage status for operator recovery.
 - The remaining work in this tranche is to replace the internal runner path with a dedicated async worker and carry the new cancellation and diagnostics model into richer operator controls and dedicated worker coordination.
 - This is now the recommended next implementation focus before expanding gallery complexity or production billing scope.
 

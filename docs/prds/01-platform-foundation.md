@@ -40,6 +40,7 @@ Create the technical and design foundation for a fast-moving SvelteKit monolith 
 - Bun monorepo, SvelteKit shell, Better Auth, Drizzle, Docker Compose, and mise workflow are in place.
 - Local infrastructure now includes Postgres, MinIO, Mailpit, and Ollama.
 - Environment defaults and docs distinguish local Ollama routing from hosted Gemini routing.
+- Internal health checks now cover the SSR app, database connectivity, storage access, billing configuration, and generation queue state behind authenticated operations endpoints.
 
 ## Remaining follow-up
 
