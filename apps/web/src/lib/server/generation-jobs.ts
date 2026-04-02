@@ -27,6 +27,7 @@ import {
 	getGenerationFailureMetadata,
 	getGenerationSubmissionMetadata,
 	getStoredAdditionalInstructions,
+	hasExpiredGenerationWorkerLease,
 	normalizeAdditionalInstructions,
 	shouldTreatAsDuplicateJob,
 } from '$lib/server/generation-orchestration'
@@ -45,7 +46,7 @@ import {
 	project,
 	sourceAsset,
 } from '@upstage/db/schema'
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 
 type GenerationTrigger = 'manual' | 'retry'
 
@@ -68,6 +69,13 @@ type JobProcessingLease = {
 type ProcessQueuedGenerationJobResult = {
 	error: string | null
 	result: ExecuteProjectGenerationResult
+}
+
+class GenerationClaimLostError extends Error {
+	constructor() {
+		super('Generation job claim is no longer active.')
+		this.name = 'GenerationClaimLostError'
+	}
 }
 
 type GenerationExecutionSummary = Pick<
@@ -192,7 +200,8 @@ export async function loadProjectGenerationState(projectId: string) {
 		jobs: jobs.map((job) => ({
 			...job,
 			billing: getGenerationBillingMetadata(job.responseMetadata),
-			canCancel: canCancelGenerationJob(job.status),
+			canCancel:
+				canCancelGenerationJob(job.status) || hasExpiredGenerationWorkerLease(job.responseMetadata),
 			execution: getGenerationExecutionMetadata(job.responseMetadata),
 			failure: getGenerationFailureMetadata(job.responseMetadata),
 			images: imagesByJobId.get(job.id) ?? [],
@@ -231,6 +240,7 @@ function updateBillingMetadata(
 
 function buildCancellationResponseMetadata(options: {
 	cancelledAt: Date
+	cancellationReason: string
 	persistedResponseMetadata: Record<string, unknown>
 	refundedCredits: number
 	balanceAfterRefund: number | null
@@ -249,8 +259,9 @@ function buildCancellationResponseMetadata(options: {
 		execution: {
 			...(options.persistedResponseMetadata.execution as Record<string, unknown>),
 			cancelledAt: options.cancelledAt.toISOString(),
-			cancellationReason: 'user_requested',
+			cancellationReason: options.cancellationReason,
 			completedAt: options.cancelledAt.toISOString(),
+			workerLeaseExpiresAt: null,
 			totalDurationMs: Number.isFinite(totalDurationMs)
 				? options.cancelledAt.getTime() - totalDurationMs
 				: null,
@@ -269,6 +280,50 @@ function buildExecutionSummary(
 		status: job.status,
 		trigger: submission.trigger ?? 'manual',
 	}
+}
+
+function isClaimableGenerationJob(job: ProcessableGenerationJobRecord) {
+	return (
+		job.status === 'queued' ||
+		(job.status === 'processing' && hasExpiredGenerationWorkerLease(job.responseMetadata))
+	)
+}
+
+function buildProcessingJobClaimCondition(options: {
+	claimToken: string
+	jobId: string
+	processingMode: JobProcessingMode
+	status: ProcessableGenerationJobRecord['status']
+}) {
+	if (options.status === 'queued') {
+		return and(eq(generationJob.id, options.jobId), eq(generationJob.status, 'queued'))
+	}
+
+	return and(
+		eq(generationJob.id, options.jobId),
+		eq(generationJob.status, 'processing'),
+		sql`(${generationJob.responseMetadata} -> 'execution' ->> 'processingMode') = ${options.processingMode}`,
+		sql`(${generationJob.responseMetadata} -> 'execution' ->> 'workerLeaseExpiresAt') is not null`,
+		sql`((${generationJob.responseMetadata} -> 'execution' ->> 'workerLeaseExpiresAt')::timestamptz) <= now()`,
+		sql`coalesce(${generationJob.responseMetadata} -> 'execution' ->> 'workerClaimToken', '') <> ${options.claimToken}`
+	)
+}
+
+function buildActiveClaimCondition(jobId: string, claimToken: string) {
+	return and(
+		eq(generationJob.id, jobId),
+		eq(generationJob.status, 'processing'),
+		sql`(${generationJob.responseMetadata} -> 'execution' ->> 'workerClaimToken') = ${claimToken}`
+	)
+}
+
+function buildExpiredWorkerLeaseCondition() {
+	return and(
+		eq(generationJob.status, 'processing'),
+		sql`(${generationJob.responseMetadata} -> 'execution' ->> 'processingMode') = 'worker'`,
+		sql`(${generationJob.responseMetadata} -> 'execution' ->> 'workerLeaseExpiresAt') is not null`,
+		sql`((${generationJob.responseMetadata} -> 'execution' ->> 'workerLeaseExpiresAt')::timestamptz) <= now()`
+	)
 }
 
 function getStoredRoomBrief(requestMetadata: unknown) {
@@ -353,11 +408,13 @@ async function claimQueuedGenerationJob(options: {
 		options.job.responseMetadata && typeof options.job.responseMetadata === 'object'
 			? (options.job.responseMetadata as Record<string, unknown>)
 			: {}
+	const claimToken = options.lease ? crypto.randomUUID() : null
 	const claimedResponseMetadata = updateExecutionMetadata(persistedResponseMetadata, {
 		lastHeartbeatAt: options.lease ? processingStartedAt.toISOString() : null,
 		processingMode: options.processingMode,
 		queueDurationMs,
 		startedAt: processingStartedAt.toISOString(),
+		workerClaimToken: claimToken,
 		workerId: options.lease?.workerId ?? null,
 		workerLeaseExpiresAt: options.lease
 			? new Date(processingStartedAt.getTime() + options.lease.leaseDurationMs).toISOString()
@@ -372,7 +429,14 @@ async function claimQueuedGenerationJob(options: {
 			updatedAt: processingStartedAt,
 			responseMetadata: claimedResponseMetadata,
 		})
-		.where(and(eq(generationJob.id, options.job.id), eq(generationJob.status, 'queued')))
+		.where(
+			buildProcessingJobClaimCondition({
+				claimToken: claimToken ?? '',
+				jobId: options.job.id,
+				processingMode: options.processingMode,
+				status: options.job.status,
+			})
+		)
 		.returning({ id: generationJob.id })
 
 	return claimedJob
@@ -381,6 +445,7 @@ async function claimQueuedGenerationJob(options: {
 					Number.isFinite(acceptedAtMs) && acceptedAtMs > 0
 						? acceptedAtMs
 						: options.job.createdAt.getTime(),
+				claimToken,
 				claimedResponseMetadata,
 				processingStartedAt,
 				queueDurationMs,
@@ -389,6 +454,7 @@ async function claimQueuedGenerationJob(options: {
 }
 
 function startGenerationJobHeartbeat(options: {
+	claimToken: string | null
 	jobId: string
 	lease: JobProcessingLease
 	processingMode: JobProcessingMode
@@ -419,7 +485,7 @@ function startGenerationJobHeartbeat(options: {
 		).toISOString()
 
 		try {
-			await db
+			const [updatedJob] = await db
 				.update(generationJob)
 				.set({
 					updatedAt: heartbeatAt,
@@ -432,7 +498,12 @@ function startGenerationJobHeartbeat(options: {
 						workerLeaseExpiresAt,
 					}),
 				})
-				.where(and(eq(generationJob.id, options.jobId), eq(generationJob.status, 'processing')))
+				.where(buildActiveClaimCondition(options.jobId, options.claimToken ?? ''))
+				.returning({ id: generationJob.id })
+
+			if (!updatedJob) {
+				active = false
+			}
 		} finally {
 			running = false
 		}
@@ -452,6 +523,7 @@ function startGenerationJobHeartbeat(options: {
 
 async function runGenerationJob(options: {
 	acceptedAtMs: number
+	claimToken: string | null
 	job: ProcessableGenerationJobRecord
 	lease: JobProcessingLease
 	responseMetadata: Record<string, unknown>
@@ -473,6 +545,7 @@ async function runGenerationJob(options: {
 	}
 
 	const heartbeat = startGenerationJobHeartbeat({
+		claimToken: options.claimToken,
 		jobId: options.job.id,
 		lease: options.lease,
 		processingMode: options.processingMode,
@@ -537,7 +610,7 @@ async function runGenerationJob(options: {
 		const runDurationMs = completedAt.getTime() - options.processingStartedAt.getTime()
 		const totalDurationMs = completedAt.getTime() - options.acceptedAtMs
 
-		await db
+		const [completedJob] = await db
 			.update(generationJob)
 			.set({
 				provider: executionResult.providerRoute,
@@ -568,7 +641,16 @@ async function runGenerationJob(options: {
 				completedAt,
 				updatedAt: completedAt,
 			})
-			.where(eq(generationJob.id, options.job.id))
+			.where(
+				options.claimToken
+					? buildActiveClaimCondition(options.job.id, options.claimToken)
+					: eq(generationJob.id, options.job.id)
+			)
+			.returning({ id: generationJob.id })
+
+		if (!completedJob) {
+			throw new GenerationClaimLostError()
+		}
 
 		const summary = buildExecutionSummary({
 			id: options.job.id,
@@ -607,7 +689,7 @@ export async function processQueuedGenerationJob(options: {
 	const job = await loadProcessableGenerationJob(options.jobId)
 	const summary = buildExecutionSummary(job)
 
-	if (job.status !== 'queued') {
+	if (!isClaimableGenerationJob(job)) {
 		return {
 			jobId: summary.jobId,
 			outcome: 'created',
@@ -634,6 +716,7 @@ export async function processQueuedGenerationJob(options: {
 	try {
 		return await runGenerationJob({
 			acceptedAtMs: claim.acceptedAtMs,
+			claimToken: claim.claimToken,
 			job,
 			lease,
 			responseMetadata: claim.claimedResponseMetadata,
@@ -649,70 +732,111 @@ export async function processQueuedGenerationJob(options: {
 		const billingMetadata = getGenerationBillingMetadata(job.responseMetadata)
 		const refundReferenceId = billingMetadata.refundReferenceId ?? `generation:${job.id}:refund`
 
-		await db.transaction(async (tx) => {
-			const [existingRefund] = await tx
-				.select({ id: creditLedger.id })
-				.from(creditLedger)
-				.where(
-					and(
-						eq(creditLedger.referenceId, refundReferenceId),
-						eq(creditLedger.userId, job.ownerUserId)
-					)
-				)
-				.limit(1)
+		if (error instanceof GenerationClaimLostError) {
+			const current = await loadGenerationExecutionSummary(options.jobId)
 
-			let refundedCredits = 0
-			let balanceAfterRefund: number | null = null
-
-			if (!existingRefund) {
-				const creditBalance = await getCreditBalance(tx, job.ownerUserId)
-				refundedCredits = billingMetadata.chargedCredits ?? 0
-				balanceAfterRefund = creditBalance + refundedCredits
-
-				if (refundedCredits > 0) {
-					await tx.insert(creditLedger).values({
-						amount: refundedCredits,
-						balanceAfter: balanceAfterRefund,
-						description: buildGenerationRefundDescription(job.projectTitle),
-						entryType: 'refund',
-						referenceId: refundReferenceId,
-						userId: job.ownerUserId,
-					})
-				}
+			return {
+				jobId: current.jobId,
+				outcome: 'created',
+				retryAttempt: current.retryAttempt,
+				status: current.status,
+				trigger: current.trigger,
 			}
+		}
 
-			await tx
-				.update(generationJob)
-				.set({
-					completedAt,
-					errorMessage: failure.message,
-					responseMetadata: {
-						...updateBillingMetadata(claim.claimedResponseMetadata, {
-							balanceAfterRefund,
-							refundReferenceId,
-							refundedCredits,
-						}),
-						execution: {
-							...(claim.claimedResponseMetadata.execution as Record<string, unknown>),
-							completedAt: completedAt.toISOString(),
-							lastHeartbeatAt: lease ? completedAt.toISOString() : null,
-							processingMode,
-							queueDurationMs: claim.queueDurationMs,
-							runDurationMs,
-							startedAt: claim.processingStartedAt.toISOString(),
-							totalDurationMs,
-							workerLeaseExpiresAt: null,
+		const resultFromClaimError = await db
+			.transaction(async (tx) => {
+				const [existingRefund] = await tx
+					.select({ id: creditLedger.id })
+					.from(creditLedger)
+					.where(
+						and(
+							eq(creditLedger.referenceId, refundReferenceId),
+							eq(creditLedger.userId, job.ownerUserId)
+						)
+					)
+					.limit(1)
+
+				let refundedCredits = 0
+				let balanceAfterRefund: number | null = null
+
+				if (!existingRefund) {
+					const creditBalance = await getCreditBalance(tx, job.ownerUserId)
+					refundedCredits = billingMetadata.chargedCredits ?? 0
+					balanceAfterRefund = creditBalance + refundedCredits
+
+					if (refundedCredits > 0) {
+						await tx.insert(creditLedger).values({
+							amount: refundedCredits,
+							balanceAfter: balanceAfterRefund,
+							description: buildGenerationRefundDescription(job.projectTitle),
+							entryType: 'refund',
+							referenceId: refundReferenceId,
+							userId: job.ownerUserId,
+						})
+					}
+				}
+
+				const [failedJob] = await tx
+					.update(generationJob)
+					.set({
+						completedAt,
+						errorMessage: failure.message,
+						responseMetadata: {
+							...updateBillingMetadata(claim.claimedResponseMetadata, {
+								balanceAfterRefund,
+								refundReferenceId,
+								refundedCredits,
+							}),
+							execution: {
+								...(claim.claimedResponseMetadata.execution as Record<string, unknown>),
+								completedAt: completedAt.toISOString(),
+								lastHeartbeatAt: lease ? completedAt.toISOString() : null,
+								processingMode,
+								queueDurationMs: claim.queueDurationMs,
+								runDurationMs,
+								startedAt: claim.processingStartedAt.toISOString(),
+								totalDurationMs,
+								workerLeaseExpiresAt: null,
+							},
+							failure: {
+								...failure,
+								failedAt: completedAt.toISOString(),
+							},
 						},
-						failure: {
-							...failure,
-							failedAt: completedAt.toISOString(),
-						},
-					},
-					status: 'failed',
-					updatedAt: completedAt,
-				})
-				.where(eq(generationJob.id, job.id))
-		})
+						status: 'failed',
+						updatedAt: completedAt,
+					})
+					.where(
+						claim.claimToken
+							? buildActiveClaimCondition(job.id, claim.claimToken)
+							: eq(generationJob.id, job.id)
+					)
+					.returning({ id: generationJob.id })
+
+				if (!failedJob) {
+					throw new GenerationClaimLostError()
+				}
+			})
+			.catch(async (claimError) => {
+				if (claimError instanceof GenerationClaimLostError) {
+					const current = await loadGenerationExecutionSummary(options.jobId)
+
+					return {
+						jobId: current.jobId,
+						outcome: 'created' as const,
+						retryAttempt: current.retryAttempt,
+						status: current.status,
+						trigger: current.trigger,
+					}
+				}
+
+				throw claimError
+			})
+
+		if (resultFromClaimError) {
+			return resultFromClaimError
+		}
 
 		throw error
 	}
@@ -752,20 +876,23 @@ export async function processNextQueuedGenerationJob(options?: {
 	processingMode?: JobProcessingMode
 	workerId?: string
 }): Promise<ProcessQueuedGenerationJobResult | null> {
-	const [queuedJob] = await db
+	const [claimableJob] = await db
 		.select({ id: generationJob.id })
 		.from(generationJob)
-		.where(eq(generationJob.status, 'queued'))
-		.orderBy(generationJob.createdAt)
+		.where(or(eq(generationJob.status, 'queued'), buildExpiredWorkerLeaseCondition()))
+		.orderBy(
+			asc(sql<number>`case when ${generationJob.status} = 'queued' then 0 else 1 end`),
+			generationJob.createdAt
+		)
 		.limit(1)
 
-	if (!queuedJob) {
+	if (!claimableJob) {
 		return null
 	}
 
 	return runQueuedGenerationJob({
 		heartbeatIntervalMs: options?.heartbeatIntervalMs,
-		jobId: queuedJob.id,
+		jobId: claimableJob.id,
 		leaseDurationMs: options?.leaseDurationMs,
 		processingMode: options?.processingMode,
 		workerId: options?.workerId,
@@ -1073,16 +1200,20 @@ export async function cancelProjectGeneration(options: {
 	if (jobRecord.status === 'cancelled') {
 		return {
 			jobId: jobRecord.id,
+			reason: 'already_cancelled' as const,
 			status: 'cancelled' as const,
 		}
 	}
 
-	if (jobRecord.status === 'processing') {
+	const canCancelExpiredWorkerLease =
+		jobRecord.status === 'processing' && hasExpiredGenerationWorkerLease(jobRecord.responseMetadata)
+
+	if (jobRecord.status === 'processing' && !canCancelExpiredWorkerLease) {
 		throw new Error('This run already started processing and can no longer be canceled.')
 	}
 
-	if (jobRecord.status !== 'queued') {
-		throw new Error('Only queued jobs can be canceled.')
+	if (jobRecord.status !== 'queued' && !canCancelExpiredWorkerLease) {
+		throw new Error('Only queued jobs or stalled worker runs can be canceled.')
 	}
 
 	const persistedResponseMetadata =
@@ -1101,11 +1232,18 @@ export async function cancelProjectGeneration(options: {
 			.update(generationJob)
 			.set({
 				completedAt: cancelledAt,
-				errorMessage: 'Generation was canceled before provider execution started.',
+				errorMessage: canCancelExpiredWorkerLease
+					? 'Generation was canceled after the deferred worker lease expired.'
+					: 'Generation was canceled before provider execution started.',
 				status: 'cancelled',
 				updatedAt: cancelledAt,
 			})
-			.where(and(eq(generationJob.id, jobRecord.id), eq(generationJob.status, 'queued')))
+			.where(
+				or(
+					and(eq(generationJob.id, jobRecord.id), eq(generationJob.status, 'queued')),
+					and(eq(generationJob.id, jobRecord.id), buildExpiredWorkerLeaseCondition())
+				)
+			)
 			.returning({ id: generationJob.id })
 
 		if (!claimedCancellation) {
@@ -1118,15 +1256,16 @@ export async function cancelProjectGeneration(options: {
 			if (currentJob?.status === 'cancelled') {
 				return {
 					jobId: jobRecord.id,
+					reason: 'already_cancelled' as const,
 					status: 'cancelled' as const,
 				}
 			}
 
 			if (currentJob?.status === 'processing') {
-				throw new Error('This run already started processing and can no longer be canceled.')
+				throw new Error('Only queued jobs or worker runs with expired leases can be canceled.')
 			}
 
-			throw new Error('Only queued jobs can be canceled.')
+			throw new Error('Only queued jobs or stalled worker runs can be canceled.')
 		}
 
 		const [existingRefund] = await tx
@@ -1164,6 +1303,9 @@ export async function cancelProjectGeneration(options: {
 				responseMetadata: buildCancellationResponseMetadata({
 					balanceAfterRefund,
 					cancelledAt,
+					cancellationReason: canCancelExpiredWorkerLease
+						? 'expired_worker_lease'
+						: 'user_requested',
 					persistedResponseMetadata,
 					refundReferenceId,
 					refundedCredits: creditedAmount,
@@ -1173,6 +1315,7 @@ export async function cancelProjectGeneration(options: {
 
 		return {
 			jobId: jobRecord.id,
+			reason: canCancelExpiredWorkerLease ? ('expired_worker_lease' as const) : ('queued' as const),
 			status: 'cancelled' as const,
 		}
 	})

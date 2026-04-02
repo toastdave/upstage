@@ -51,12 +51,13 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 - Queued jobs can now be canceled before provider execution begins, with compensating credit refunds recorded automatically when a queued run is withdrawn.
 - The orchestration layer now supports deferred processing mode plus an internal token-protected job-runner endpoint, so queued jobs can be claimed outside the request path while preserving the original provider route and stored job metadata.
 - Deferred worker claims now write lease and heartbeat metadata into job history, making runner ownership and liveness visible while a queued job is processing.
+- Expired worker leases can now be reclaimed safely, and stale workers no longer own the final write path once a job has been reassigned or interrupted.
 
 ## Remaining follow-up
 
 - This is still the recommended next engineering slice now that room-brief review, gallery review, retry-safe submissions, and initial credit enforcement are in place.
 - Move from the current internal runner endpoint to a dedicated background worker package when latency or retry volume grows.
-- Expand the current cancellation and diagnostic foundation into worker-aware operations that can interrupt or reassign leased jobs safely once execution is fully detached.
+- Expand the current cancellation and diagnostic foundation into richer worker orchestration, including dedicated leasing storage, operator tools, and explicit in-flight interruption behavior once execution is fully detached.
 - Harden credit reservation and compensating ledger behavior for async execution once billing enforcement is live.
 - Add provider-aware critique and rerank passes for future quality control.
 

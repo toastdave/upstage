@@ -579,14 +579,14 @@ export const actions: Actions = {
 
 		if (!generationJobId) {
 			return fail(400, {
-				error: 'Choose a queued generation before requesting cancellation.',
+				error: 'Choose a queued or stalled generation before requesting cancellation.',
 				form: 'cancelGeneration',
 				values: { generationJobId },
 			})
 		}
 
 		try {
-			await cancelProjectGeneration({
+			const cancellation = await cancelProjectGeneration({
 				jobId: generationJobId,
 				projectSlug: params.slug,
 				userId: locals.user.id,
@@ -594,7 +594,10 @@ export const actions: Actions = {
 
 			return {
 				form: 'cancelGeneration',
-				message: 'Queued generation canceled. Credits were restored to your available balance.',
+				message:
+					cancellation.reason === 'expired_worker_lease'
+						? 'Stalled generation canceled after its worker lease expired. Credits were restored to your available balance.'
+						: 'Queued generation canceled. Credits were restored to your available balance.',
 				values: { generationJobId },
 			}
 		} catch (error) {

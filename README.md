@@ -207,6 +207,7 @@ Queued generation runner endpoint:
 - Optional JSON body: `{"jobId":"<job-id>"}` to process one job or `{"limit":5}` to drain several queued jobs in order
 - Optional runner diagnostics body fields: `{"runnerId":"worker-a","leaseSeconds":180,"heartbeatIntervalSeconds":20}`
 - You can also send `x-upstage-runner-id: worker-a` to stamp heartbeat metadata with a stable worker identity
+- The runner now reclaims worker-owned jobs whose lease has expired, so stalled deferred runs do not remain stuck in `processing` forever
 
 ## Billing setup
 

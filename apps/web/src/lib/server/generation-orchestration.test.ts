@@ -8,6 +8,8 @@ import {
 	getGenerationExecutionMetadata,
 	getGenerationFailureMetadata,
 	getGenerationSubmissionMetadata,
+	hasActiveGenerationWorkerLease,
+	hasExpiredGenerationWorkerLease,
 	normalizeAdditionalInstructions,
 	shouldTreatAsDuplicateJob,
 } from './generation-orchestration'
@@ -121,6 +123,7 @@ describe('generation orchestration helpers', () => {
 					queueDurationMs: 1200,
 					runDurationMs: 9200,
 					totalDurationMs: 10400,
+					workerClaimToken: 'claim-1',
 					workerId: 'runner-a',
 					workerLeaseExpiresAt: '2026-04-01T12:02:08.000Z',
 				},
@@ -131,9 +134,31 @@ describe('generation orchestration helpers', () => {
 			queueDurationMs: 1200,
 			runDurationMs: 9200,
 			totalDurationMs: 10400,
+			workerClaimToken: 'claim-1',
 			workerId: 'runner-a',
 			workerLeaseExpiresAt: '2026-04-01T12:02:08.000Z',
 		})
+	})
+
+	test('detects active and expired worker leases', () => {
+		const activeMetadata = {
+			execution: {
+				processingMode: 'worker',
+				workerLeaseExpiresAt: '2026-04-01T12:02:08.000Z',
+			},
+		}
+		const expiredMetadata = {
+			execution: {
+				processingMode: 'worker',
+				workerLeaseExpiresAt: '2026-04-01T11:58:08.000Z',
+			},
+		}
+		const now = new Date('2026-04-01T12:00:00.000Z')
+
+		expect(hasActiveGenerationWorkerLease(activeMetadata, now)).toBe(true)
+		expect(hasExpiredGenerationWorkerLease(activeMetadata, now)).toBe(false)
+		expect(hasActiveGenerationWorkerLease(expiredMetadata, now)).toBe(false)
+		expect(hasExpiredGenerationWorkerLease(expiredMetadata, now)).toBe(true)
 	})
 
 	test('reads billing and failure metadata', () => {

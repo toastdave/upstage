@@ -860,11 +860,13 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 										<form method="POST" action="?/cancelGeneration">
 											<input name="generationJobId" type="hidden" value={job.id} />
 											<button class="rounded-full border border-terracotta-500/15 bg-white px-4 py-2 text-sm font-semibold text-terracotta-500" type="submit">
-												Cancel queued run
+												{job.status === 'processing' ? 'Cancel stalled run' : 'Cancel queued run'}
 											</button>
 										</form>
 										<p class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm text-ink-700">
-											Credits restore automatically if the run has not started yet.
+											{job.status === 'processing'
+												? 'Expired worker leases can be interrupted safely and refunded.'
+												: 'Credits restore automatically if the run has not started yet.'}
 										</p>
 									</div>
 								{/if}

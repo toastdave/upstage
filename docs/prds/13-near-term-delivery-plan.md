@@ -109,7 +109,8 @@ Current status:
 - Queued runs can now be canceled before provider execution starts, with automatic credit restoration when cancellation succeeds.
 - The app now supports a deferred processing mode plus an internal job-runner endpoint so queued jobs can be claimed outside the request path when needed.
 - Deferred worker claims now write runner identity, heartbeat, and lease-expiry metadata so support can see whether a queued job has been claimed and is still alive.
-- The remaining work in this tranche is to replace the internal runner path with a dedicated async worker and carry the new cancellation and diagnostics model into safe reassignment and interruption rules.
+- Expired worker leases can now be reclaimed safely, and stalled worker-owned runs can be canceled without letting stale workers overwrite the final job state.
+- The remaining work in this tranche is to replace the internal runner path with a dedicated async worker and carry the new cancellation and diagnostics model into richer operator controls and dedicated worker coordination.
 - This is now the recommended next implementation focus before expanding gallery complexity or production billing scope.
 
 ### 4. Credits and billing enforcement

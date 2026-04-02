@@ -29,6 +29,7 @@ export type GenerationExecutionMetadata = {
 	startedAt: string | null
 	totalDurationMs: number | null
 	trigger: 'manual' | 'retry' | null
+	workerClaimToken: string | null
 	workerId: string | null
 	workerLeaseExpiresAt: string | null
 }
@@ -134,6 +135,30 @@ export function normalizeAdditionalInstructions(value: string | null) {
 
 export function canCancelGenerationJob(status: GenerationJobStatus) {
 	return status === 'queued'
+}
+
+export function hasActiveGenerationWorkerLease(responseMetadata: unknown, now = new Date()) {
+	const execution = getGenerationExecutionMetadata(responseMetadata)
+
+	if (execution.processingMode !== 'worker' || !execution.workerLeaseExpiresAt) {
+		return false
+	}
+
+	const expiresAt = Date.parse(execution.workerLeaseExpiresAt)
+
+	return Number.isFinite(expiresAt) && expiresAt > now.getTime()
+}
+
+export function hasExpiredGenerationWorkerLease(responseMetadata: unknown, now = new Date()) {
+	const execution = getGenerationExecutionMetadata(responseMetadata)
+
+	if (execution.processingMode !== 'worker' || !execution.workerLeaseExpiresAt) {
+		return false
+	}
+
+	const expiresAt = Date.parse(execution.workerLeaseExpiresAt)
+
+	return Number.isFinite(expiresAt) && expiresAt <= now.getTime()
 }
 
 export function classifyGenerationFailure(error: unknown): GenerationFailureDetails {
@@ -245,6 +270,7 @@ export function getGenerationExecutionMetadata(
 		totalDurationMs: readNumber(execution?.totalDurationMs),
 		trigger:
 			execution?.trigger === 'manual' || execution?.trigger === 'retry' ? execution.trigger : null,
+		workerClaimToken: readString(execution?.workerClaimToken),
 		workerId: readString(execution?.workerId),
 		workerLeaseExpiresAt: readString(execution?.workerLeaseExpiresAt),
 	}
