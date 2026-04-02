@@ -30,7 +30,8 @@ Current status:
 - Source-photo uploads now create a draft room brief automatically, project pages expose a structured review step, and reviewed briefs feed the generation planner.
 - Project pages now expose a gallery-style before-and-after review surface with persisted favorites and download-ready generated images.
 - Generation submissions now use deterministic idempotency keys, recent duplicate runs are deduplicated, and failed jobs can be retried safely from the project page.
-- Remaining work is focused on background execution, cancellation, billing enforcement, richer output handling, and support-grade diagnostics.
+- Project job timelines now expose lifecycle timing, refund visibility, and queued-run cancellation before provider execution begins.
+- Remaining work is focused on background execution, worker-aware cancellation, billing enforcement, and richer output handling.
 - The next major slice should center on orchestration hardening: async job processing, cancellation rules, and support-grade diagnostics that make the core loop trustworthy under paid usage.
 - Billing follow-up should continue immediately after that with deeper webhook fulfillment, sandbox validation, and concurrency-safe balance handling.
 
@@ -61,6 +62,7 @@ Current status:
 
 - Seeded plans now back real starter-credit grants, workspace pages show recent credit ledger activity, and project detail pages show live available balance.
 - Generation acceptance now enforces insufficient-balance checks server-side, deducts credits when a run is accepted, and issues compensating refunds when execution fails.
+- Queued generation cancellations now restore credits through the same ledger path before provider execution starts, which reduces support risk while async processing is still on the roadmap.
 - Polar sandbox checkout and customer-portal routes are now wired into the workspace, and webhook intake is in place for sandbox validation.
 - A dedicated billing page now exposes ledger history, sandbox readiness, webhook endpoint guidance, and recent user-scoped Polar webhook events.
 - Remaining work is focused on deeper webhook fulfillment for renewals and refunds, richer pricing surfaces, and full sandbox-to-production rollout validation after async orchestration closes the main balance-concurrency risk.

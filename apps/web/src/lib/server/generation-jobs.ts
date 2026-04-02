@@ -15,7 +15,12 @@ import { db } from '$lib/server/db'
 import {
 	buildGenerationAttemptKey,
 	buildGenerationSubmissionKey,
+	canCancelGenerationJob,
 	classifyGenerationFailure,
+	getGenerationBillingMetadata,
+	getGenerationExecutionMetadata,
+	getGenerationFailureMetadata,
+	getGenerationSubmissionMetadata,
 	getStoredAdditionalInstructions,
 	normalizeAdditionalInstructions,
 	shouldTreatAsDuplicateJob,
@@ -143,11 +148,71 @@ export async function loadProjectGenerationState(projectId: string) {
 		generationRoute: getGenerationRoute(),
 		jobs: jobs.map((job) => ({
 			...job,
+			billing: getGenerationBillingMetadata(job.responseMetadata),
+			canCancel: canCancelGenerationJob(job.status),
+			execution: getGenerationExecutionMetadata(job.responseMetadata),
+			failure: getGenerationFailureMetadata(job.responseMetadata),
 			images: imagesByJobId.get(job.id) ?? [],
+			submission: getGenerationSubmissionMetadata(job.requestMetadata),
 			sourceAsset: sourceAssetById.get(job.sourceAssetId) ?? null,
 		})),
 		presets,
 	}
+}
+
+function updateExecutionMetadata(
+	responseMetadata: Record<string, unknown>,
+	patch: Record<string, unknown>
+) {
+	return {
+		...responseMetadata,
+		execution: {
+			...(responseMetadata.execution as Record<string, unknown>),
+			...patch,
+		},
+	} satisfies Record<string, unknown>
+}
+
+function updateBillingMetadata(
+	responseMetadata: Record<string, unknown>,
+	patch: Record<string, unknown>
+) {
+	return {
+		...responseMetadata,
+		billing: {
+			...(responseMetadata.billing as Record<string, unknown>),
+			...patch,
+		},
+	} satisfies Record<string, unknown>
+}
+
+function buildCancellationResponseMetadata(options: {
+	cancelledAt: Date
+	persistedResponseMetadata: Record<string, unknown>
+	refundedCredits: number
+	balanceAfterRefund: number | null
+	refundReferenceId: string
+}) {
+	const totalDurationMs = Date.parse(
+		String((options.persistedResponseMetadata.execution as Record<string, unknown>).acceptedAt)
+	)
+
+	return {
+		...updateBillingMetadata(options.persistedResponseMetadata, {
+			balanceAfterRefund: options.balanceAfterRefund,
+			refundReferenceId: options.refundReferenceId,
+			refundedCredits: options.refundedCredits,
+		}),
+		execution: {
+			...(options.persistedResponseMetadata.execution as Record<string, unknown>),
+			cancelledAt: options.cancelledAt.toISOString(),
+			cancellationReason: 'user_requested',
+			completedAt: options.cancelledAt.toISOString(),
+			totalDurationMs: Number.isFinite(totalDurationMs)
+				? options.cancelledAt.getTime() - totalDurationMs
+				: null,
+		},
+	} satisfies Record<string, unknown>
 }
 
 export async function executeProjectGeneration(options: {
@@ -426,24 +491,41 @@ export async function executeProjectGeneration(options: {
 			retryAttempt,
 		},
 	} satisfies Record<string, unknown>
+	const acceptedAtMs = acceptedAt.getTime()
 
 	const processingStartedAt = new Date()
+	const queueDurationMs = processingStartedAt.getTime() - acceptedAtMs
 
-	await db
+	const [claimedJob] = await db
 		.update(generationJob)
 		.set({
 			startedAt: processingStartedAt,
 			status: 'processing',
 			updatedAt: processingStartedAt,
-			responseMetadata: {
-				...persistedResponseMetadata,
-				execution: {
-					...(persistedResponseMetadata.execution as Record<string, unknown>),
-					startedAt: processingStartedAt.toISOString(),
-				},
-			},
+			responseMetadata: updateExecutionMetadata(persistedResponseMetadata, {
+				processingMode: 'request',
+				queueDurationMs,
+				startedAt: processingStartedAt.toISOString(),
+			}),
 		})
-		.where(eq(generationJob.id, acceptedJobId))
+		.where(and(eq(generationJob.id, acceptedJobId), eq(generationJob.status, 'queued')))
+		.returning({ id: generationJob.id })
+
+	if (!claimedJob) {
+		const [currentJob] = await db
+			.select({ status: generationJob.status })
+			.from(generationJob)
+			.where(eq(generationJob.id, acceptedJobId))
+			.limit(1)
+
+		return {
+			jobId: acceptedJobId,
+			outcome: 'created',
+			retryAttempt,
+			status: currentJob?.status ?? 'cancelled',
+			trigger,
+		}
+	}
 
 	try {
 		const sourceObject = await getStoredObject(sourceAssetRecord.storageKey)
@@ -506,6 +588,8 @@ export async function executeProjectGeneration(options: {
 		}
 
 		const completedAt = new Date()
+		const runDurationMs = completedAt.getTime() - processingStartedAt.getTime()
+		const totalDurationMs = completedAt.getTime() - acceptedAtMs
 
 		await db
 			.update(generationJob)
@@ -524,7 +608,11 @@ export async function executeProjectGeneration(options: {
 						...(persistedResponseMetadata.execution as Record<string, unknown>),
 						completedAt: completedAt.toISOString(),
 						imageCount: executionResult.images.length,
+						processingMode: 'request',
+						queueDurationMs,
+						runDurationMs,
 						startedAt: processingStartedAt.toISOString(),
+						totalDurationMs,
 					},
 					warnings: executionResult.warnings ?? [],
 				},
@@ -544,6 +632,8 @@ export async function executeProjectGeneration(options: {
 	} catch (error) {
 		const failure = classifyGenerationFailure(error)
 		const completedAt = new Date()
+		const runDurationMs = completedAt.getTime() - processingStartedAt.getTime()
+		const totalDurationMs = completedAt.getTime() - acceptedAtMs
 
 		await db.transaction(async (tx) => {
 			const [existingRefund] = await tx
@@ -581,16 +671,19 @@ export async function executeProjectGeneration(options: {
 					completedAt,
 					errorMessage: failure.message,
 					responseMetadata: {
-						billing: {
-							...(persistedResponseMetadata.billing as Record<string, unknown>),
+						...updateBillingMetadata(persistedResponseMetadata, {
 							balanceAfterRefund,
 							refundReferenceId,
 							refundedCredits,
-						},
+						}),
 						execution: {
 							...(persistedResponseMetadata.execution as Record<string, unknown>),
 							completedAt: completedAt.toISOString(),
+							processingMode: 'request',
+							queueDurationMs,
+							runDurationMs,
 							startedAt: processingStartedAt.toISOString(),
+							totalDurationMs,
 						},
 						failure: {
 							...failure,
@@ -605,6 +698,141 @@ export async function executeProjectGeneration(options: {
 
 		throw error
 	}
+}
+
+export async function cancelProjectGeneration(options: {
+	jobId: string
+	projectSlug: string
+	userId: string
+}) {
+	const [jobRecord] = await db
+		.select({
+			id: generationJob.id,
+			responseMetadata: generationJob.responseMetadata,
+			status: generationJob.status,
+			title: project.title,
+		})
+		.from(generationJob)
+		.innerJoin(project, eq(project.id, generationJob.projectId))
+		.where(
+			and(
+				eq(generationJob.id, options.jobId),
+				eq(project.ownerUserId, options.userId),
+				eq(project.slug, options.projectSlug)
+			)
+		)
+		.limit(1)
+
+	if (!jobRecord) {
+		throw new Error('Generation job not found')
+	}
+
+	if (jobRecord.status === 'cancelled') {
+		return {
+			jobId: jobRecord.id,
+			status: 'cancelled' as const,
+		}
+	}
+
+	if (jobRecord.status === 'processing') {
+		throw new Error('This run already started processing and can no longer be canceled.')
+	}
+
+	if (jobRecord.status !== 'queued') {
+		throw new Error('Only queued jobs can be canceled.')
+	}
+
+	const persistedResponseMetadata =
+		jobRecord.responseMetadata && typeof jobRecord.responseMetadata === 'object'
+			? (jobRecord.responseMetadata as Record<string, unknown>)
+			: {}
+	const refundReferenceId =
+		getGenerationBillingMetadata(jobRecord.responseMetadata).refundReferenceId ??
+		`generation:${jobRecord.id}:refund`
+	const refundedCredits =
+		getGenerationBillingMetadata(jobRecord.responseMetadata).chargedCredits ?? 0
+	const cancelledAt = new Date()
+
+	return db.transaction(async (tx) => {
+		const [claimedCancellation] = await tx
+			.update(generationJob)
+			.set({
+				completedAt: cancelledAt,
+				errorMessage: 'Generation was canceled before provider execution started.',
+				status: 'cancelled',
+				updatedAt: cancelledAt,
+			})
+			.where(and(eq(generationJob.id, jobRecord.id), eq(generationJob.status, 'queued')))
+			.returning({ id: generationJob.id })
+
+		if (!claimedCancellation) {
+			const [currentJob] = await tx
+				.select({ status: generationJob.status })
+				.from(generationJob)
+				.where(eq(generationJob.id, jobRecord.id))
+				.limit(1)
+
+			if (currentJob?.status === 'cancelled') {
+				return {
+					jobId: jobRecord.id,
+					status: 'cancelled' as const,
+				}
+			}
+
+			if (currentJob?.status === 'processing') {
+				throw new Error('This run already started processing and can no longer be canceled.')
+			}
+
+			throw new Error('Only queued jobs can be canceled.')
+		}
+
+		const [existingRefund] = await tx
+			.select({ id: creditLedger.id })
+			.from(creditLedger)
+			.where(
+				and(
+					eq(creditLedger.referenceId, refundReferenceId),
+					eq(creditLedger.userId, options.userId)
+				)
+			)
+			.limit(1)
+
+		let creditedAmount = 0
+		let balanceAfterRefund: number | null = null
+
+		if (!existingRefund && refundedCredits > 0) {
+			const creditBalance = await getCreditBalance(tx, options.userId)
+			creditedAmount = refundedCredits
+			balanceAfterRefund = creditBalance + refundedCredits
+
+			await tx.insert(creditLedger).values({
+				amount: refundedCredits,
+				balanceAfter: balanceAfterRefund,
+				description: buildGenerationRefundDescription(jobRecord.title),
+				entryType: 'refund',
+				referenceId: refundReferenceId,
+				userId: options.userId,
+			})
+		}
+
+		await tx
+			.update(generationJob)
+			.set({
+				responseMetadata: buildCancellationResponseMetadata({
+					balanceAfterRefund,
+					cancelledAt,
+					persistedResponseMetadata,
+					refundReferenceId,
+					refundedCredits: creditedAmount,
+				}),
+			})
+			.where(eq(generationJob.id, jobRecord.id))
+
+		return {
+			jobId: jobRecord.id,
+			status: 'cancelled' as const,
+		}
+	})
 }
 
 export async function retryProjectGeneration(options: {

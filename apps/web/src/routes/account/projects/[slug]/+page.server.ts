@@ -4,6 +4,7 @@ import { buildFallbackRoomBrief, buildRoomBriefSummary, normalizeRoomBrief } fro
 import { loadUserBillingSnapshot } from '$lib/server/billing'
 import { db } from '$lib/server/db'
 import {
+	cancelProjectGeneration,
 	executeProjectGeneration,
 	loadProjectGenerationState,
 	retryProjectGeneration,
@@ -160,6 +161,10 @@ function buildGenerationResultMessage(
 		if (result.status === 'succeeded') {
 			return 'That same concept already finished recently. Review the saved output batch below instead of creating a duplicate run.'
 		}
+	}
+
+	if (result.status === 'cancelled') {
+		return 'This concept run was canceled before provider execution began. Credits were restored automatically.'
 	}
 
 	if (result.trigger === 'retry') {
@@ -553,6 +558,48 @@ export const actions: Actions = {
 						? error.message
 						: 'Generation retry failed before completion. Check the job history for more detail.',
 				form: 'retryGeneration',
+				values: { generationJobId },
+			})
+		}
+	},
+
+	cancelGeneration: async ({ locals, params, request }) => {
+		if (!locals.user) {
+			throw redirect(303, `/auth/sign-in?redirectTo=/account/projects/${params.slug}`)
+		}
+
+		await getOwnedProject(params.slug, locals.user.id)
+		const formData = await request.formData()
+		const generationJobEntry = formData.get('generationJobId')
+		const generationJobId = typeof generationJobEntry === 'string' ? generationJobEntry : ''
+
+		if (!generationJobId) {
+			return fail(400, {
+				error: 'Choose a queued generation before requesting cancellation.',
+				form: 'cancelGeneration',
+				values: { generationJobId },
+			})
+		}
+
+		try {
+			await cancelProjectGeneration({
+				jobId: generationJobId,
+				projectSlug: params.slug,
+				userId: locals.user.id,
+			})
+
+			return {
+				form: 'cancelGeneration',
+				message: 'Queued generation canceled. Credits were restored to your available balance.',
+				values: { generationJobId },
+			}
+		} catch (error) {
+			return fail(400, {
+				error:
+					error instanceof Error
+						? error.message
+						: 'Generation cancellation failed. Refresh the job history and try again.',
+				form: 'cancelGeneration',
 				values: { generationJobId },
 			})
 		}

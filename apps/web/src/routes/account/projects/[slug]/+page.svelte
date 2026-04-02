@@ -184,44 +184,37 @@ function buildDownloadUrl(path: string) {
 	return `${path}?download=1`
 }
 
-function getSubmissionMetadata(job: GeneratedJob) {
-	if (!job.requestMetadata || typeof job.requestMetadata !== 'object') {
-		return null
-	}
-
-	const submission = 'submission' in job.requestMetadata ? job.requestMetadata.submission : null
-
-	return submission && typeof submission === 'object'
-		? (submission as Record<string, unknown>)
-		: null
-}
-
-function getFailureMetadata(job: GeneratedJob) {
-	if (!job.responseMetadata || typeof job.responseMetadata !== 'object') {
-		return null
-	}
-
-	const failure = 'failure' in job.responseMetadata ? job.responseMetadata.failure : null
-
-	return failure && typeof failure === 'object' ? (failure as Record<string, unknown>) : null
-}
-
 function getRetryAttempt(job: GeneratedJob) {
-	const retryAttempt = getSubmissionMetadata(job)?.retryAttempt
-
-	return typeof retryAttempt === 'number' ? retryAttempt : null
+	return job.submission.retryAttempt ?? job.execution.retryAttempt ?? null
 }
 
 function getFailureCategory(job: GeneratedJob) {
-	const category = getFailureMetadata(job)?.category
-
-	return typeof category === 'string' && category.length > 0 ? category : null
+	return job.failure?.category ?? null
 }
 
 function isRetryableFailure(job: GeneratedJob) {
-	const retryable = getFailureMetadata(job)?.retryable
+	return job.failure?.retryable ?? true
+}
 
-	return typeof retryable === 'boolean' ? retryable : true
+function formatDuration(durationMs: number | null) {
+	if (durationMs === null || durationMs < 0) {
+		return null
+	}
+
+	if (durationMs < 1000) {
+		return `${durationMs} ms`
+	}
+
+	const seconds = durationMs / 1000
+
+	if (seconds < 60) {
+		return `${seconds.toFixed(seconds < 10 ? 1 : 0)} s`
+	}
+
+	const minutes = Math.floor(seconds / 60)
+	const remainingSeconds = Math.round(seconds % 60)
+
+	return `${minutes}m ${remainingSeconds}s`
 }
 
 async function copyGalleryImageLink(imageId: string, path: string) {
@@ -704,16 +697,31 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 				{/if}
 			</div>
 
-			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur">
+			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur" id="job-timeline">
 				<div class="flex items-center justify-between gap-4">
 					<div>
 						<p class="text-sm uppercase tracking-[0.28em] text-terracotta-500">Generation history</p>
 						<h2 class="mt-3 font-display text-3xl text-ink-950">Job timeline</h2>
+						<p class="mt-3 max-w-3xl text-sm leading-7 text-ink-700">
+							Queued runs can be canceled until provider execution begins. Once a run moves into processing, the job stays traceable here with timing and credit diagnostics.
+						</p>
 					</div>
 					<span class="rounded-full border border-ink-950/10 bg-paper-100 px-4 py-2 text-xs uppercase tracking-[0.24em] text-ink-700">
 						{data.generationState.jobs.length} jobs
 					</span>
 				</div>
+
+				{#if form?.form === 'cancelGeneration' && form.message}
+					<p class="mt-5 rounded-2xl border border-moss-500/20 bg-moss-500/10 px-4 py-3 text-sm text-moss-500">
+						{form.message}
+					</p>
+				{/if}
+
+				{#if form?.form === 'cancelGeneration' && form.error}
+					<p class="mt-5 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
+						{form.error}
+					</p>
+				{/if}
 
 				{#if data.generationState.jobs.length === 0}
 					<div class="mt-6 rounded-[1.75rem] border border-dashed border-ink-950/15 bg-paper-100/75 p-6 text-sm leading-7 text-ink-700">
@@ -725,6 +733,9 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 							{@const retryAttempt = getRetryAttempt(job)}
 							{@const failureCategory = getFailureCategory(job)}
 							{@const retryableFailure = isRetryableFailure(job)}
+							{@const queueDuration = formatDuration(job.execution.queueDurationMs)}
+							{@const runDuration = formatDuration(job.execution.runDurationMs)}
+							{@const totalDuration = formatDuration(job.execution.totalDurationMs)}
 							<div class="rounded-[1.75rem] border border-ink-950/10 bg-paper-100/70 p-5">
 								<div class="flex flex-wrap items-start justify-between gap-4">
 									<div>
@@ -746,8 +757,14 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 									{#if job.completedAt}
 										<span class="rounded-full bg-white px-3 py-1">Completed {new Date(job.completedAt).toLocaleString()}</span>
 									{/if}
+									{#if job.execution.startedAt}
+										<span class="rounded-full bg-white px-3 py-1">Started {new Date(job.execution.startedAt).toLocaleString()}</span>
+									{/if}
 									{#if failureCategory}
 										<span class="rounded-full bg-terracotta-500/10 px-3 py-1 text-terracotta-500">{failureCategory}</span>
+									{/if}
+									{#if job.status === 'cancelled'}
+										<span class="rounded-full bg-paper-100 px-3 py-1">Canceled before execution</span>
 									{/if}
 								</div>
 
@@ -756,6 +773,29 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 										{job.errorMessage}
 									</p>
 								{/if}
+
+								<div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+									<div class="rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-700">
+										<p class="text-xs uppercase tracking-[0.22em] text-ink-700/60">Submission</p>
+										<p class="mt-2 text-ink-950">{job.submission.trigger === 'retry' ? 'Retry request' : 'Manual request'}</p>
+										<p class="mt-1 text-xs text-ink-700/70">{job.sourceAsset?.originalFilename ?? 'Source photo selected'}</p>
+									</div>
+									<div class="rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-700">
+										<p class="text-xs uppercase tracking-[0.22em] text-ink-700/60">Queue time</p>
+										<p class="mt-2 text-ink-950">{queueDuration ?? (job.status === 'queued' ? 'Waiting to start' : 'Not recorded')}</p>
+										<p class="mt-1 text-xs text-ink-700/70">{job.execution.processingMode === 'request' ? 'Processed inline with the request' : 'Processing route pending'}</p>
+									</div>
+									<div class="rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-700">
+										<p class="text-xs uppercase tracking-[0.22em] text-ink-700/60">Run time</p>
+										<p class="mt-2 text-ink-950">{runDuration ?? (job.status === 'processing' ? 'Running now' : 'Not recorded')}</p>
+										<p class="mt-1 text-xs text-ink-700/70">Total lifecycle: {totalDuration ?? 'Not recorded'}</p>
+									</div>
+									<div class="rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-700">
+										<p class="text-xs uppercase tracking-[0.22em] text-ink-700/60">Credit handling</p>
+										<p class="mt-2 text-ink-950">Charged {job.billing.chargedCredits ?? job.creditCost} credits</p>
+										<p class="mt-1 text-xs text-ink-700/70">{job.billing.refundedCredits ? `Refunded ${job.billing.refundedCredits} on failure or cancellation.` : 'No refund recorded for this run.'}</p>
+									</div>
+								</div>
 
 								{#if job.status === 'failed'}
 									<div class="mt-4 flex flex-wrap gap-3">
@@ -770,6 +810,20 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 												Fix the underlying issue before retrying this run.
 											</p>
 										{/if}
+									</div>
+								{/if}
+
+								{#if job.canCancel}
+									<div class="mt-4 flex flex-wrap gap-3">
+										<form method="POST" action="?/cancelGeneration">
+											<input name="generationJobId" type="hidden" value={job.id} />
+											<button class="rounded-full border border-terracotta-500/15 bg-white px-4 py-2 text-sm font-semibold text-terracotta-500" type="submit">
+												Cancel queued run
+											</button>
+										</form>
+										<p class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm text-ink-700">
+											Credits restore automatically if the run has not started yet.
+										</p>
 									</div>
 								{/if}
 

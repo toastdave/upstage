@@ -47,12 +47,14 @@ Create a reliable generation pipeline that turns project inputs into queued, tra
 - Job history now stores provider route, request metadata, response metadata, and generated image records.
 - Submission keys are now deterministic per generation plan, which prevents accidental duplicate jobs for repeated requests and concurrent form submissions.
 - Failed jobs can now be retried safely from the project detail page, with attempt metadata and failure classification persisted alongside each run.
+- Jobs now record queue, run, and total lifecycle timing so support diagnostics are visible from the project detail page without reading raw logs.
+- Queued jobs can now be canceled before provider execution begins, with compensating credit refunds recorded automatically when a queued run is withdrawn.
 
 ## Remaining follow-up
 
-- This is the recommended next engineering slice now that room-brief review, gallery review, retry-safe submissions, and initial credit enforcement are in place.
+- This is still the recommended next engineering slice now that room-brief review, gallery review, retry-safe submissions, and initial credit enforcement are in place.
 - Move generation execution to a background worker when latency or retry volume grows.
-- Add explicit cancellation rules and operator-facing job diagnostics for support workflows.
+- Expand the current cancellation and diagnostic foundation into worker-aware operations once execution moves off the request path.
 - Harden credit reservation and compensating ledger behavior for async execution once billing enforcement is live.
 - Add provider-aware critique and rerank passes for future quality control.
 

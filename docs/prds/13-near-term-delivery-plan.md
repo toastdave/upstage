@@ -105,7 +105,9 @@ Current status:
 
 - Initial hardening is shipped. Generation submissions now use deterministic idempotency keys, recent duplicate runs are deduplicated, failed jobs can be retried safely from the project page, and billing hooks now issue compensating refunds on failed runs.
 - Failure metadata now records retry eligibility and coarse failure categories in job history.
-- The remaining work in this tranche is to move execution off the request path, add cancellation rules, and expose stronger support-facing diagnostics.
+- Project pages now expose queue-time, run-time, total lifecycle, and refund diagnostics directly in the job timeline.
+- Queued runs can now be canceled before provider execution starts, with automatic credit restoration when cancellation succeeds.
+- The remaining work in this tranche is to move execution fully off the request path and carry the new cancellation and diagnostics model into async workers.
 - This is now the recommended next implementation focus before expanding gallery complexity or production billing scope.
 
 ### 4. Credits and billing enforcement
@@ -132,6 +134,7 @@ Current status:
 
 - Initial enforcement is shipped. Users now receive the seeded free plan and starter credits automatically, project pages show live credit balance, and the server blocks insufficient-balance generations before provider execution starts.
 - Generation acceptance now records signed ledger entries, and failed jobs create compensating refund entries so balance changes remain traceable from the workspace.
+- Queued generation cancellations now restore credits through the same traceable refund path before provider execution begins.
 - Polar sandbox checkout and portal handoff routes are now wired, and webhook intake is in place so the hosted billing flow can be tested end to end once sandbox keys are added.
 - A dedicated billing page now surfaces credit history, sandbox readiness, webhook endpoint guidance, and recent user-scoped Polar event audit entries.
 - The remaining work in this tranche is deeper webhook fulfillment for renewals and refunds, richer pricing UX, and production-readiness validation after sandbox testing.

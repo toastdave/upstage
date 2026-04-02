@@ -2,7 +2,12 @@ import { describe, expect, test } from 'bun:test'
 import {
 	buildGenerationAttemptKey,
 	buildGenerationSubmissionKey,
+	canCancelGenerationJob,
 	classifyGenerationFailure,
+	getGenerationBillingMetadata,
+	getGenerationExecutionMetadata,
+	getGenerationFailureMetadata,
+	getGenerationSubmissionMetadata,
 	normalizeAdditionalInstructions,
 	shouldTreatAsDuplicateJob,
 } from './generation-orchestration'
@@ -89,6 +94,76 @@ describe('generation orchestration helpers', () => {
 			category: 'provider',
 			retryable: true,
 		})
+	})
+
+	test('reads structured submission and execution metadata', () => {
+		expect(
+			getGenerationSubmissionMetadata({
+				submission: {
+					additionalInstructions: ' Keep windows clear ',
+					retryAttempt: 2,
+					submittedAt: '2026-04-01T12:00:00.000Z',
+					trigger: 'retry',
+				},
+			})
+		).toMatchObject({
+			additionalInstructions: 'Keep windows clear',
+			retryAttempt: 2,
+			trigger: 'retry',
+		})
+
+		expect(
+			getGenerationExecutionMetadata({
+				execution: {
+					acceptedAt: '2026-04-01T12:00:00.000Z',
+					processingMode: 'request',
+					queueDurationMs: 1200,
+					runDurationMs: 9200,
+					totalDurationMs: 10400,
+				},
+			})
+		).toMatchObject({
+			processingMode: 'request',
+			queueDurationMs: 1200,
+			runDurationMs: 9200,
+			totalDurationMs: 10400,
+		})
+	})
+
+	test('reads billing and failure metadata', () => {
+		expect(
+			getGenerationBillingMetadata({
+				billing: {
+					chargedCredits: 8,
+					refundReferenceId: 'generation:1:refund',
+					refundedCredits: 8,
+				},
+			})
+		).toMatchObject({
+			chargedCredits: 8,
+			refundReferenceId: 'generation:1:refund',
+			refundedCredits: 8,
+		})
+
+		expect(
+			getGenerationFailureMetadata({
+				failure: {
+					category: 'provider',
+					failedAt: '2026-04-01T12:00:09.000Z',
+					message: 'Provider timeout while generating image',
+					retryable: true,
+				},
+			})
+		).toMatchObject({
+			category: 'provider',
+			retryable: true,
+		})
+	})
+
+	test('only allows queued jobs to be canceled', () => {
+		expect(canCancelGenerationJob('queued')).toBe(true)
+		expect(canCancelGenerationJob('processing')).toBe(false)
+		expect(canCancelGenerationJob('failed')).toBe(false)
 	})
 
 	test('normalizes blank additional instructions to null', () => {
