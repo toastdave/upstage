@@ -32,6 +32,7 @@ import {
 	shouldTreatAsDuplicateJob,
 } from '$lib/server/generation-orchestration'
 import { buildGenerationPlan } from '$lib/server/generation-plan'
+import { loadUserPresetCatalog } from '$lib/server/preset-personalization'
 import {
 	buildGenerationAssetStorageKey,
 	buildStoredMediaUrl,
@@ -45,6 +46,7 @@ import {
 	generationPreset,
 	project,
 	sourceAsset,
+	userPresetPreference,
 } from '@upstage/db/schema'
 import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 
@@ -116,18 +118,8 @@ export type GenerationOperationsSnapshot = {
 	succeededCount: number
 }
 
-export async function loadProjectGenerationState(projectId: string) {
-	const presets = await db
-		.select({
-			id: generationPreset.id,
-			name: generationPreset.name,
-			category: generationPreset.category,
-			promptTemplate: generationPreset.promptTemplate,
-			defaultAspectRatio: generationPreset.defaultAspectRatio,
-			slug: generationPreset.slug,
-		})
-		.from(generationPreset)
-		.orderBy(generationPreset.isFeatured, generationPreset.name)
+export async function loadProjectGenerationState(projectId: string, userId: string) {
+	const presets = await loadUserPresetCatalog(userId)
 
 	const jobs = await db
 		.select({
@@ -1151,6 +1143,26 @@ export async function executeProjectGeneration(options: {
 				referenceId: chargeReferenceId,
 				userId: options.userId,
 			})
+
+			await tx
+				.insert(userPresetPreference)
+				.values({
+					createdAt: acceptedAt,
+					isFavorite: false,
+					lastUsedAt: acceptedAt,
+					presetId: presetRecord.id,
+					updatedAt: acceptedAt,
+					useCount: 1,
+					userId: options.userId,
+				})
+				.onConflictDoUpdate({
+					target: [userPresetPreference.userId, userPresetPreference.presetId],
+					set: {
+						lastUsedAt: acceptedAt,
+						updatedAt: acceptedAt,
+						useCount: sql`${userPresetPreference.useCount} + 1`,
+					},
+				})
 
 			return {
 				result: {

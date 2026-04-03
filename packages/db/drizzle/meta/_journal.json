@@ -1,20 +1,27 @@
 {
-	"version": "7",
-	"dialect": "postgresql",
-	"entries": [
-		{
-			"idx": 0,
-			"version": "7",
-			"when": 1775021632762,
-			"tag": "0000_thin_nehzno",
-			"breakpoints": true
-		},
-		{
-			"idx": 1,
-			"version": "7",
-			"when": 1775022895668,
-			"tag": "0001_tiresome_ironclad",
-			"breakpoints": true
-		}
-	]
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1775021632762,
+      "tag": "0000_thin_nehzno",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1775022895668,
+      "tag": "0001_tiresome_ironclad",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775173868866,
+      "tag": "0002_sudden_ted_forrester",
+      "breakpoints": true
+    }
+  ]
 }

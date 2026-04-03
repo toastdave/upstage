@@ -1,6 +1,13 @@
 import { loadUserBillingSnapshot } from '$lib/server/billing'
 import { db } from '$lib/server/db'
 import { isOperationsConsoleEnabled } from '$lib/server/internal-api'
+import {
+	buildUserPresetCollections,
+	loadUserGenerationPreferences,
+	loadUserPresetCatalog,
+	parseDefaultAspectRatio,
+	saveUserGenerationPreferences,
+} from '$lib/server/preset-personalization'
 import { createProjectSlug, normalizeOptionalText, parseProjectType } from '$lib/server/projects'
 import { fail, redirect } from '@sveltejs/kit'
 import { project, sourceAsset } from '@upstage/db/schema'
@@ -71,6 +78,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		.orderBy(desc(project.updatedAt))
 
 	const billing = await loadUserBillingSnapshot(locals.user.id)
+	const generationPreferences = await loadUserGenerationPreferences(locals.user.id)
+	const presetCatalog = await loadUserPresetCatalog(locals.user.id)
 
 	const sourcePhotoCount = projects.reduce((total, item) => total + item.activeAssetCount, 0)
 
@@ -78,9 +87,11 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		billing,
 		billingNotice: getBillingNotice(url),
 		creditBalance: billing.creditBalance,
+		generationPreferences,
 		operationsConsoleEnabled: isOperationsConsoleEnabled(),
 		projectCount: projects.length,
 		projects,
+		presetCollections: buildUserPresetCollections(presetCatalog),
 		session: locals.session,
 		sourcePhotoCount,
 		user: locals.user,
@@ -139,5 +150,47 @@ export const actions: Actions = {
 		})
 
 		throw redirect(303, `/account/projects/${slug}`)
+	},
+
+	saveGenerationDefaults: async ({ locals, request }) => {
+		if (!locals.user) {
+			throw redirect(303, '/auth/sign-in?redirectTo=/account')
+		}
+
+		const formData = await request.formData()
+		const defaultProjectType = parseProjectType(formData.get('defaultProjectType'))
+		const defaultAspectRatio = parseDefaultAspectRatio(formData.get('defaultAspectRatio'))
+		const values = {
+			defaultAspectRatio: defaultAspectRatio ?? '4:3',
+			defaultProjectType: defaultProjectType ?? 'virtual_staging',
+		}
+
+		if (!defaultProjectType) {
+			return fail(400, {
+				error: 'Choose a default workflow so new projects start from the right direction.',
+				form: 'saveGenerationDefaults',
+				values,
+			})
+		}
+
+		if (!defaultAspectRatio) {
+			return fail(400, {
+				error: 'Choose a supported aspect ratio for your saved generation defaults.',
+				form: 'saveGenerationDefaults',
+				values,
+			})
+		}
+
+		await saveUserGenerationPreferences({
+			defaultAspectRatio,
+			defaultProjectType,
+			userId: locals.user.id,
+		})
+
+		return {
+			form: 'saveGenerationDefaults',
+			message: 'Saved your default workflow and aspect ratio for future projects and concept runs.',
+			values,
+		}
 	},
 }

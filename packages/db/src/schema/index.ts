@@ -66,6 +66,16 @@ export const user = pgTable('user', {
 	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
 
+export const userPreference = pgTable('user_preference', {
+	userId: text('user_id')
+		.primaryKey()
+		.references(() => user.id, { onDelete: 'cascade' }),
+	defaultProjectType: projectTypeEnum('default_project_type').notNull().default('virtual_staging'),
+	defaultAspectRatio: varchar('default_aspect_ratio', { length: 16 }).notNull().default('4:3'),
+	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
 export const session = pgTable(
 	'session',
 	{
@@ -189,6 +199,28 @@ export const generationPreset = pgTable('generation_preset', {
 	createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 	updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 })
+
+export const userPresetPreference = pgTable(
+	'user_preset_preference',
+	{
+		userId: text('user_id')
+			.notNull()
+			.references(() => user.id, { onDelete: 'cascade' }),
+		presetId: text('preset_id')
+			.notNull()
+			.references(() => generationPreset.id, { onDelete: 'cascade' }),
+		isFavorite: boolean('is_favorite').notNull().default(false),
+		lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+		useCount: integer('use_count').notNull().default(0),
+		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+		updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.userId, table.presetId] }),
+		index('user_preset_preference_user_idx').on(table.userId),
+		index('user_preset_preference_preset_idx').on(table.presetId),
+	]
+)
 
 export const generationJob = pgTable(
 	'generation_job',

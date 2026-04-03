@@ -1,6 +1,7 @@
 <script lang="ts">
 import { goto, invalidateAll } from '$app/navigation'
 import { authClient } from '$lib/auth-client'
+import { aspectRatioOptions, formatAspectRatio } from '$lib/generation'
 import {
 	formatProjectType,
 	projectTypeCards,
@@ -12,13 +13,26 @@ import type { ActionData, PageData } from './$types'
 const { data, form } = $props<{ data: PageData; form?: ActionData }>()
 
 const createProjectValues = $derived(form?.form === 'createProject' ? form.values : null)
+const generationDefaultValues = $derived(
+	form?.form === 'saveGenerationDefaults' ? form.values : null
+)
 
 let errorMessage = $state('')
 let isSigningOut = $state(false)
 let selectedProjectType = $state('virtual_staging')
+let selectedDefaultProjectType = $state('virtual_staging')
+let selectedDefaultAspectRatio = $state('4:3')
 
 $effect(() => {
-	selectedProjectType = createProjectValues?.projectType ?? 'virtual_staging'
+	selectedProjectType =
+		createProjectValues?.projectType ?? data.generationPreferences.defaultProjectType
+})
+
+$effect(() => {
+	selectedDefaultProjectType =
+		generationDefaultValues?.defaultProjectType ?? data.generationPreferences.defaultProjectType
+	selectedDefaultAspectRatio =
+		generationDefaultValues?.defaultAspectRatio ?? data.generationPreferences.defaultAspectRatio
 })
 
 const heroStats = $derived([
@@ -208,6 +222,61 @@ async function signOut() {
 			</div>
 
 			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur">
+				<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Personalization</p>
+				<h2 class="mt-3 font-display text-3xl text-ink-950">Save your go-to generation defaults</h2>
+				<p class="mt-3 text-sm leading-7 text-ink-700">
+					Start each new workspace with the workflow you use most, then keep a preferred aspect ratio ready for the next concept run.
+				</p>
+
+				<form class="mt-6 space-y-5" method="POST" action="?/saveGenerationDefaults">
+					<div class="space-y-3">
+						<p class="text-sm font-medium text-ink-900">Default workflow</p>
+						<div class="grid gap-3">
+							{#each projectTypeCards as card (card.value)}
+								<label class={`cursor-pointer rounded-[1.5rem] border px-4 py-4 transition ${selectedDefaultProjectType === card.value ? 'border-moss-500 bg-moss-500/8' : 'border-ink-950/10 bg-paper-100/75'}`}>
+									<input bind:group={selectedDefaultProjectType} class="sr-only" name="defaultProjectType" type="radio" value={card.value} />
+									<p class="font-semibold text-ink-950">{card.label}</p>
+									<p class="mt-2 text-sm leading-7 text-ink-700">{card.description}</p>
+								</label>
+							{/each}
+						</div>
+					</div>
+
+					<div class="space-y-2">
+						<label class="text-sm font-medium text-ink-900" for="defaultAspectRatio">Default aspect ratio</label>
+						<select bind:value={selectedDefaultAspectRatio} class="w-full rounded-2xl border border-ink-950/10 bg-white px-4 py-3 text-sm text-ink-950 outline-none transition focus:border-moss-500" id="defaultAspectRatio" name="defaultAspectRatio">
+							{#each aspectRatioOptions as option (option.value)}
+								<option value={option.value}>{option.label} ({option.value})</option>
+							{/each}
+						</select>
+					</div>
+
+					<div class="rounded-2xl border border-ink-950/10 bg-paper-100/75 px-4 py-4 text-sm leading-7 text-ink-700">
+						<p class="font-semibold text-ink-950">Current saved setup</p>
+						<p class="mt-2">
+							{formatProjectType(data.generationPreferences.defaultProjectType)} + {formatAspectRatio(data.generationPreferences.defaultAspectRatio)}
+						</p>
+					</div>
+
+					{#if form?.form === 'saveGenerationDefaults' && form.message}
+						<p class="rounded-2xl border border-moss-500/20 bg-moss-500/10 px-4 py-3 text-sm text-moss-500">
+							{form.message}
+						</p>
+					{/if}
+
+					{#if form?.form === 'saveGenerationDefaults' && form.error}
+						<p class="rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
+							{form.error}
+						</p>
+					{/if}
+
+					<button class="w-full rounded-full bg-ink-950 px-5 py-3 text-sm font-semibold text-paper-100" type="submit">
+						Save defaults
+					</button>
+				</form>
+			</div>
+
+			<div class="rounded-[2rem] border border-ink-950/10 bg-white/85 p-8 shadow-[0_24px_90px_-54px_rgba(18,36,40,0.55)] backdrop-blur">
 				<p class="text-sm uppercase tracking-[0.28em] text-moss-500">Account</p>
 				{#if data.billingNotice}
 					<p class={`mt-5 rounded-2xl border px-4 py-3 text-sm ${data.billingNotice.tone === 'success' ? 'border-moss-500/20 bg-moss-500/10 text-moss-500' : data.billingNotice.tone === 'error' ? 'border-terracotta-500/20 bg-terracotta-500/10 text-terracotta-500' : 'border-ink-950/10 bg-paper-100/80 text-ink-700'}`}>
@@ -256,6 +325,50 @@ async function signOut() {
 					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
 						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Next milestone</p>
 						<p class="mt-2 leading-7">Async generation now has a dedicated worker runtime and operations console. The next launch-risk work is richer billing fulfillment, gallery depth, and account polish.</p>
+					</div>
+
+					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
+						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Favorite presets</p>
+						{#if data.presetCollections.favorites.length === 0}
+							<p class="mt-2 text-sm leading-7 text-ink-700">
+								Save a few presets from a project workspace and they will stay handy here.
+							</p>
+						{:else}
+							<div class="mt-4 flex flex-wrap gap-2 text-sm text-ink-700">
+								{#each data.presetCollections.favorites as preset (preset.id)}
+									<span class="rounded-full border border-ink-950/10 bg-white px-3 py-2">
+										{preset.name} - {formatProjectType(preset.category)}
+									</span>
+								{/each}
+							</div>
+						{/if}
+					</div>
+
+					<div class="rounded-2xl border border-ink-950/8 bg-paper-100/80 px-4 py-4">
+						<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Recent preset activity</p>
+						{#if data.presetCollections.recent.length === 0}
+							<p class="mt-2 text-sm leading-7 text-ink-700">
+								Your recent concept runs will show up here once you start generating from saved presets.
+							</p>
+						{:else}
+							<div class="mt-4 space-y-3">
+								{#each data.presetCollections.recent as preset (preset.id)}
+									<div class="rounded-2xl border border-ink-950/8 bg-white px-4 py-4">
+										<div class="flex items-start justify-between gap-4">
+											<div>
+												<p class="font-semibold text-ink-950">{preset.name}</p>
+												<p class="mt-1 text-sm leading-7 text-ink-700">
+													{formatProjectType(preset.category)} - {preset.useCount} run{preset.useCount === 1 ? '' : 's'}
+												</p>
+											</div>
+											<p class="text-xs uppercase tracking-[0.22em] text-ink-700/70">
+												{preset.lastUsedAt ? new Date(preset.lastUsedAt).toLocaleDateString() : 'Ready'}
+											</p>
+										</div>
+									</div>
+								{/each}
+							</div>
+						{/if}
 					</div>
 
 					{#if data.operationsConsoleEnabled}

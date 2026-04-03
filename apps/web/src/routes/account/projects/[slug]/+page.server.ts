@@ -6,6 +6,7 @@ import {
 	executeProjectGeneration,
 	retryProjectGeneration,
 } from '$lib/server/generation-jobs'
+import { toggleUserPresetFavorite } from '$lib/server/preset-personalization'
 import {
 	getOwnedProject,
 	loadProjectWorkspaceData,
@@ -254,6 +255,45 @@ export const actions: Actions = {
 			form: 'archiveAsset',
 			message:
 				'Source photo archived. You can always upload a fresh room photo for the next round.',
+		}
+	},
+
+	togglePresetFavorite: async ({ locals, request }) => {
+		if (!locals.user) {
+			throw redirect(303, '/auth/sign-in')
+		}
+
+		const formData = await request.formData()
+		const presetEntry = formData.get('presetId')
+		const presetId = typeof presetEntry === 'string' ? presetEntry : ''
+
+		if (!presetId) {
+			return fail(400, {
+				error: 'Choose a preset before saving it to favorites.',
+				form: 'togglePresetFavorite',
+				values: { presetId },
+			})
+		}
+
+		const result = await toggleUserPresetFavorite({
+			presetId,
+			userId: locals.user.id,
+		})
+
+		if (!result) {
+			return fail(404, {
+				error: 'That preset is no longer available.',
+				form: 'togglePresetFavorite',
+				values: { presetId },
+			})
+		}
+
+		return {
+			form: 'togglePresetFavorite',
+			message: result.isFavorite
+				? `${result.presetName} is now saved to your favorites.`
+				: `${result.presetName} was removed from your favorites.`,
+			values: { presetId },
 		}
 	},
 

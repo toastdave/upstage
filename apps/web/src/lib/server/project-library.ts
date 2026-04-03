@@ -3,6 +3,7 @@ import { buildFallbackRoomBrief, buildRoomBriefSummary, normalizeRoomBrief } fro
 import { loadUserBillingSnapshot } from '$lib/server/billing'
 import { db } from '$lib/server/db'
 import { loadProjectGenerationState } from '$lib/server/generation-jobs'
+import { loadUserGenerationPreferences } from '$lib/server/preset-personalization'
 import { error } from '@sveltejs/kit'
 import { generationImage, generationJob, project, sourceAsset } from '@upstage/db/schema'
 import { and, desc, eq } from 'drizzle-orm'
@@ -43,18 +44,20 @@ function decorateAssetWithRoomBrief(
 export async function loadProjectWorkspaceData(slug: string, userId: string) {
 	const projectRecord = await getOwnedProject(slug, userId)
 	const billing = await loadUserBillingSnapshot(userId)
+	const generationPreferences = await loadUserGenerationPreferences(userId)
 	const assets = await db
 		.select()
 		.from(sourceAsset)
 		.where(eq(sourceAsset.projectId, projectRecord.id))
 		.orderBy(desc(sourceAsset.createdAt))
-	const generationState = await loadProjectGenerationState(projectRecord.id)
+	const generationState = await loadProjectGenerationState(projectRecord.id, userId)
 	const decoratedAssets = assets.map((asset) => decorateAssetWithRoomBrief(projectRecord, asset))
 
 	return {
 		activeAssets: decoratedAssets.filter((item) => item.archivedAt === null),
 		archivedAssets: decoratedAssets.filter((item) => item.archivedAt !== null),
 		billing,
+		generationPreferences,
 		generationState,
 		project: {
 			...projectRecord,

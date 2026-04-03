@@ -50,6 +50,9 @@ const runtimeCapability = $derived(
 )
 const estimatedCredits = $derived(estimateGenerationCredits(selectedAspectRatio || '4:3'))
 const hasEnoughCredits = $derived(data.billing.creditBalance >= estimatedCredits)
+const selectedPreset = $derived(
+	matchingPresets.find((preset: MatchingPreset) => preset.id === selectedPresetId) ?? null
+)
 const selectedAsset = $derived(
 	data.activeAssets.find((asset: ProjectAsset) => asset.id === selectedSourceAssetId) ??
 		data.activeAssets[0] ??
@@ -64,6 +67,22 @@ const favoriteDeliverableCount = $derived(
 			count + job.images.filter((image: GeneratedImage) => image.isFavorite).length,
 		0
 	)
+)
+const favoritePresetCount = $derived(
+	matchingPresets.filter((preset: MatchingPreset) => preset.isFavorite).length
+)
+const recentPresetIds = $derived(
+	matchingPresets
+		.filter((preset: MatchingPreset) => preset.lastUsedAt)
+		.sort((left: MatchingPreset, right: MatchingPreset) => {
+			if (!left.lastUsedAt || !right.lastUsedAt) {
+				return 0
+			}
+
+			return new Date(right.lastUsedAt).getTime() - new Date(left.lastUsedAt).getTime()
+		})
+		.slice(0, 3)
+		.map((preset: MatchingPreset) => preset.id)
 )
 
 $effect(() => {
@@ -82,7 +101,10 @@ $effect(() => {
 	}
 
 	if (!aspectRatioOptions.some((option) => option.value === selectedAspectRatio)) {
-		selectedAspectRatio = matchingPresets[0]?.defaultAspectRatio ?? '4:3'
+		selectedAspectRatio =
+			data.generationPreferences.defaultAspectRatio ??
+			matchingPresets[0]?.defaultAspectRatio ??
+			'4:3'
 	}
 })
 
@@ -109,9 +131,12 @@ $effect(() => {
 		selectedSourceAssetId = actionValues.sourceAssetId
 	}
 
+	if (actionValues?.presetId) {
+		selectedPresetId = actionValues.presetId
+	}
+
 	if (form?.form === 'generateConcept' && actionValues) {
 		selectedAspectRatio = actionValues.aspectRatio || selectedAspectRatio
-		selectedPresetId = actionValues.presetId || selectedPresetId
 		additionalInstructions = actionValues.additionalInstructions || ''
 	}
 })
@@ -183,6 +208,10 @@ function selectGalleryImage(jobId: string, imageId: string) {
 
 function buildDownloadUrl(path: string) {
 	return `${path}?download=1`
+}
+
+function isRecentPreset(preset: MatchingPreset) {
+	return recentPresetIds.includes(preset.id)
 }
 
 function getRetryAttempt(job: GeneratedJob) {
@@ -436,6 +465,81 @@ async function copyGalleryImageLink(imageId: string, path: string) {
 				<p class="mt-3 text-sm leading-7 text-ink-700">
 					The generation plan now starts from the saved room brief for the selected photo, then layers preset guidance, aspect ratio, and any run-specific notes on top.
 				</p>
+
+				{#if matchingPresets.length > 0}
+					<div class="mt-6 rounded-[1.75rem] border border-ink-950/10 bg-paper-100/75 p-5">
+						<div class="flex flex-wrap items-start justify-between gap-4">
+							<div>
+								<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Preset browser</p>
+								<p class="mt-2 max-w-2xl text-sm leading-7 text-ink-700">
+									Pin the looks you reuse most, keep recent directions close, and choose a tested visual starting point before each run.
+								</p>
+							</div>
+							<div class="flex flex-wrap gap-2 text-xs uppercase tracking-[0.22em] text-ink-700/80">
+								<span class="rounded-full border border-ink-950/10 bg-white px-3 py-1">{matchingPresets.length} presets</span>
+								<span class="rounded-full border border-ink-950/10 bg-white px-3 py-1">{favoritePresetCount} favorites</span>
+							</div>
+						</div>
+
+						<div class="mt-5 grid gap-3 lg:grid-cols-2">
+							{#each matchingPresets as preset (preset.id)}
+								<div class={`rounded-[1.5rem] border p-4 transition ${selectedPresetId === preset.id ? 'border-moss-500 bg-white shadow-[0_18px_48px_-30px_rgba(77,130,92,0.55)]' : 'border-ink-950/10 bg-white/80'}`}>
+									<button class="w-full text-left" type="button" onclick={() => (selectedPresetId = preset.id)}>
+										<div class="flex flex-wrap items-start justify-between gap-4">
+											<div>
+												<p class="font-semibold text-ink-950">{preset.name}</p>
+												<p class="mt-2 text-sm leading-7 text-ink-700">{preset.promptTemplate}</p>
+											</div>
+											<span class="rounded-full border border-ink-950/10 bg-paper-100 px-3 py-1 text-xs uppercase tracking-[0.22em] text-ink-700">
+												{formatAspectRatio(preset.defaultAspectRatio)}
+											</span>
+										</div>
+									</button>
+
+									<div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+										<div class="flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.22em] text-ink-700/80">
+											{#if preset.isFavorite}
+												<span class="rounded-full bg-moss-500/12 px-3 py-1 text-moss-500">Favorite</span>
+											{/if}
+											{#if isRecentPreset(preset)}
+												<span class="rounded-full bg-terracotta-500/12 px-3 py-1 text-terracotta-500">Recent</span>
+											{/if}
+											{#if preset.useCount > 0}
+												<span class="rounded-full bg-paper-100 px-3 py-1">{preset.useCount} runs</span>
+											{/if}
+										</div>
+										<form method="POST" action="?/togglePresetFavorite">
+											<input name="presetId" type="hidden" value={preset.id} />
+											<button class="rounded-full border border-ink-950/10 bg-white px-4 py-2 text-sm font-semibold text-ink-900" type="submit">
+												{preset.isFavorite ? 'Unfavorite' : 'Save favorite'}
+											</button>
+										</form>
+									</div>
+								</div>
+							{/each}
+						</div>
+
+						{#if form?.form === 'togglePresetFavorite' && form.message}
+							<p class="mt-5 rounded-2xl border border-moss-500/20 bg-moss-500/10 px-4 py-3 text-sm text-moss-500">
+								{form.message}
+							</p>
+						{/if}
+
+						{#if form?.form === 'togglePresetFavorite' && form.error}
+							<p class="mt-5 rounded-2xl border border-terracotta-500/20 bg-terracotta-500/10 px-4 py-3 text-sm text-terracotta-500">
+								{form.error}
+							</p>
+						{/if}
+
+						{#if selectedPreset}
+							<div class="mt-5 rounded-2xl border border-ink-950/10 bg-white px-4 py-4 text-sm leading-7 text-ink-700">
+								<p class="text-xs uppercase tracking-[0.24em] text-ink-700/70">Selected preset</p>
+								<p class="mt-2 font-semibold text-ink-950">{selectedPreset.name}</p>
+								<p class="mt-2">{selectedPreset.promptTemplate}</p>
+							</div>
+						{/if}
+					</div>
+				{/if}
 
 				<form class="mt-6 space-y-5" method="POST" action="?/generateConcept">
 					<div class="grid gap-4 sm:grid-cols-2">

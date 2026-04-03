@@ -6,6 +6,8 @@ import {
 	generationJob,
 	project,
 	sourceAsset,
+	userPreference,
+	userPresetPreference,
 } from './index'
 
 describe('database schema', () => {
@@ -31,5 +33,12 @@ describe('database schema', () => {
 
 	test('billing events store provider replay identifiers', () => {
 		expect(billingEvent.providerEventId.name).toBe('provider_event_id')
+	})
+
+	test('user personalization tables store defaults and preset activity', () => {
+		expect(userPreference.defaultProjectType.name).toBe('default_project_type')
+		expect(userPreference.defaultAspectRatio.name).toBe('default_aspect_ratio')
+		expect(userPresetPreference.isFavorite.name).toBe('is_favorite')
+		expect(userPresetPreference.lastUsedAt.name).toBe('last_used_at')
 	})
 })

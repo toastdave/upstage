@@ -8,4 +8,6 @@ build
 .turbo
 apps/web/.svelte-kit
 apps/web/.svelte-kit-opencode
+apps/.vite-cache-web
+apps/web/.vite-cache
 apps/web/build

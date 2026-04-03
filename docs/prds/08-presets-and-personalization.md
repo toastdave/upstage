@@ -37,11 +37,13 @@ Make Upstage feel opinionated and high-conviction by helping users start from te
 
 - Starter presets are seeded in the database and available in the project generation setup flow.
 - Presets already compile into provider-aware prompts while keeping the product-facing preset catalog stable.
+- Users can now browse workflow-matched preset cards, favorite presets, and see recent preset activity in the workspace.
+- User-level defaults now persist the preferred workflow and default aspect ratio for future project setup and generation.
 
 ## Remaining follow-up
 
-- Add preset browsing beyond the current select menu and expose richer preset descriptions/examples.
-- Add favorites, recents, and user-level personalization on top of the current seeded catalog.
+- Expose richer preset examples or visual references beyond prompt-copy summaries.
+- Consider per-workflow default presets once usage data shows stable repeat behavior.
 
 ## Non-goals
 
